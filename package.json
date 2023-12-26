@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "mongoose": "^8.0.3",
+    "telegraf": "^4.15.3"
+  },
+  "devDependencies": {
+    "@telegraf/types": "^6.9.1",
+    "@types/node": "^20.10.5",
+    "nodemon": "^3.0.2",
+    "typescript": "^5.3.3"
+  }
+}
