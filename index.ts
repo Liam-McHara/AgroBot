@@ -1,10 +1,12 @@
-const { mongoose } = require("mongoose");
+import mongoose from 'mongoose';
 import { botInitHandlers } from './src/botInitHandlers';
 import { botStart } from './src/botInstance';
 
 import { updateAllMainMsgs } from './src/updateAllMainMsgs';
 
-const test_tgId = 1064621248;
+import dotenv from 'dotenv';
+dotenv.config()
+const test_tgId = process.env.TEST_ID;
 
 async function run() {
 	await mongoose.connect(process.env.MONGODB);
