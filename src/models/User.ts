@@ -3,11 +3,29 @@ import mongoose, { Document } from 'mongoose';
 interface IUser extends Document {
 	tgId: number;
 	name: string;
+	offers: IOffer[];
 	mainMsgId?: number;
-	getMyOrders: () => Promise<void>;
-	getOrdersToMe: () => Promise<void>;
-	findByTgId: () => Promise<void>;
+	addOffer: (productName: string, amount: number) => Promise<void>;
+	updateOffer: (productName: string, newAmount: number) => Promise<void>;
+	removeOffer: (productName: string) => Promise<void>;
 }
+
+interface IOffer extends Document {
+	productName: string;
+	amount: number;
+}
+
+const offerSchema = new mongoose.Schema({
+	productName: {
+		type: String,
+		required: true,
+	},
+	amount: {
+		type: Number,
+		required: true,
+		min: 1
+	}
+}, { timestamps: true })
 
 const userSchema = new mongoose.Schema({
 	tgId: {
@@ -20,26 +38,57 @@ const userSchema = new mongoose.Schema({
 		unique: true,
 		required: true,
 	},
-	mainMsgId: Number
+	offers: [offerSchema],
+	mainMsgId: Number,
 }, { timestamps: true })
 
-// Method to retrieve the current orders made by the user.
-userSchema.methods.getMyOrders = async function () {
-	const Order = this.model('Order');
-	const orders = await Order.find({ orderer: this._id }).select('_id');
-	return orders.map(orders => orders._id);
+// Adds the offer to the database. If there is an existing offer of the same
+// product, updates its amount.
+userSchema.methods.addOffer = async function (productName: string, amount: number) {
+	try {
+		if (amount < 1)
+			throw new Error("amount must be > 0");
+		const existingOffer =
+			this.offers.find((offer: IOffer) => offer.productName === productName);
+		if (existingOffer) {
+			existingOffer.amount += amount;
+		} else {
+			this.offers.push({ productName, amount });
+		}
+		await this.save();
+	} catch (e) {
+		console.error("Error adding offer:" + e);
+	}
 }
 
-// Method to retrieve the current orders made to the user.
-userSchema.methods.getOrdersToMe = async function () {
-	const Order = this.model('Order');
-	const orders = await Order.find({ producer: this._id }).select('_id');
-	return orders.map(orders => orders._id);
+userSchema.methods.removeOffer = async function (productName: string) {
+	try {
+		const offerIndex =
+			this.offers.findIndex((offer: IOffer) => offer.productName === productName);
+
+		if (offerIndex > -1) {
+			this.offers.splice(offerIndex, 1);
+			await this.save();
+			return true;
+		} else {
+			return false;
+		}
+	} catch (e) {
+		console.error("Error removing offer:" + e);
+	}
 }
 
-userSchema.statics.findByTgId = async function(tgId: number) {
-	return this.findOne({ tgId: tgId});
-}
+userSchema.methods.updateOffer = async function (productName: string, newAmount: number) {
+	const offer = this.offers.find(offer => offer.productName === productName);
+
+	if (offer) {
+		offer.amount = newAmount;
+		await this.save();
+		return true;
+	} else {
+		return false;
+	}
+};
 
 const User = mongoose.model<IUser>("User", userSchema)
-export { IUser, User };
+export { IUser, User, IOffer };
