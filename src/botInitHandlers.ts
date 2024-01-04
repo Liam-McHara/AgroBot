@@ -20,9 +20,9 @@ export async function botInitHandlers() {
 	console.log("Initializing bot handlers...");
 
 	bot.start(async (ctx: Context, next: Function) => {
-		const tgId = ctx.from.id;
-		sendTempMsg(tgId, `Hola!`, 30);
 		try {
+			const tgId = ctx.from.id;
+			sendTempMsg(tgId, `Hola!`, 30);
 			const user = await User.findOne({ tgId: tgId });
 			if (!user)
 				sendTempMsg(tgId, msgs.unregistered);
@@ -40,14 +40,14 @@ export async function botInitHandlers() {
 		if (!("text" in ctx.message))
 			return next();
 		const tgId = ctx.from.id;
-		const args = parseOfferInput(ctx.message.text);
-		if (!args) {
-			sendTempMsg(tgId, msgs.offerUsage);
-			return next();
-		}
-		const productName = args.productName;
-		const amount = args.amount;
 		try {
+			const args = parseOfferInput(ctx.message.text);
+			if (!args) {
+				sendTempMsg(tgId, msgs.offerUsage);
+				return next();
+			}
+			const productName = args.productName;
+			const amount = args.amount;
 			const user = await User.findOne({ tgId: tgId });
 			await user.setOffer(productName, amount);
 			const offer = user.offers.find(offer => offer.productName === productName);
@@ -66,14 +66,18 @@ export async function botInitHandlers() {
 	bot.on(message("text"), async (ctx: Context, next: Function) => {
 		if (!("text" in ctx.message))
 			return;
-		const tgId = ctx.from.id;
-		const msgText = ctx.message.text;
-		const name = ctx.message.from.first_name || ctx.message.from.username;
-		console.log(`${name} (${tgId}) says:\n\t${msgText}`);
-		if (ctx.message.text.toLowerCase().trim() === registerWord.toLowerCase().trim()) {
-			await createUser(tgId, escapeMarkdownV2(name));
+		try {
+			const tgId = ctx.from.id;
+			const msgText = ctx.message.text;
+			const name = ctx.message.from.first_name || ctx.message.from.username;
+			console.log(`${name} (${tgId}) says:\n\t${msgText}`);
+			if (ctx.message.text.toLowerCase().trim() === registerWord.toLowerCase().trim()) {
+				await createUser(tgId, escapeMarkdownV2(name));
+			}
+			return next();
+		} catch (err) {
+			console.error("Error getting a text message: ", err);
 		}
-		return next();
 	});
 
 	bot.on(message("text"), async (ctx: Context, next: Function) => {
@@ -81,7 +85,7 @@ export async function botInitHandlers() {
 			return;
 		try {
 			const tgId = ctx.from.id;
-			if (orderSteps[tgId]?.step === 3 ) {
+			if (orderSteps[tgId]?.step === 3) {
 				const amount: number = parseInt(ctx.message.text);
 				if (Number.isNaN(amount) || amount < 1)
 					sendTempMsg(tgId, `Sisplau, respón només amb un número vàlid.\nQuina quantitat vols?`);
@@ -113,20 +117,28 @@ export async function botInitHandlers() {
 
 	bot.action("offer", (ctx: Context) => {
 		console.log("offer btn pressed");
-		ctx.answerCbQuery(msgs.offerUsage, { show_alert: true });
+		try {
+			ctx.answerCbQuery(msgs.offerUsage, { show_alert: true });
+		} catch (err) {
+			console.error("Error on offer btn press: ", err);
+		}
 	});
 
 	bot.action("order", async (ctx) => {
-		console.log("order btn pressed");
-		const tgId = ctx.chat.id;
-		orderSteps[tgId] = { step: 1 }
-		const ret = await getOffersKb1(tgId);
-		ctx.answerCbQuery();
-		if (ret.usersAmount === 0) {
-			sendTempMsg(tgId, msgs.orderNoOffers);
-		}
-		else {
-			sendTempMsgKb(tgId, msgs.orderSelectProducer, ret.keyboard, 100);
+		try {
+			console.log("order btn pressed");
+			const tgId = ctx.chat.id;
+			orderSteps[tgId] = { step: 1 }
+			const ret = await getOffersKb1(tgId);
+			ctx.answerCbQuery();
+			if (ret.usersAmount === 0) {
+				sendTempMsg(tgId, msgs.orderNoOffers);
+			}
+			else {
+				sendTempMsgKb(tgId, msgs.orderSelectProducer, ret.keyboard, 100);
+			}
+		} catch (err) {
+			console.error("Error on offer btn press: ", err);
 		}
 	})
 
@@ -143,7 +155,7 @@ export async function botInitHandlers() {
 				const user = await User.findOne({ _id: userId });
 				console.log(`Selected user: ${user.name}.`)
 				ctx.answerCbQuery();
-				orderSteps[tgId] = { step: 2, producer: user, msgId: msgId};
+				orderSteps[tgId] = { step: 2, producer: user, msgId: msgId };
 				ctx.editMessageText(
 					`Demanant a: ${user.name}\nSelecciona el producte.`,
 					await getOffersKb2(userId)
