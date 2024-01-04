@@ -1,5 +1,5 @@
 import { Markup, Telegraf } from 'telegraf';
-import { bot } from './botInstance'
+import { bot } from './globals'
 import { IUser } from './models/User'
 
 const keyboard = Markup.inlineKeyboard([
@@ -7,35 +7,28 @@ const keyboard = Markup.inlineKeyboard([
 	Markup.button.callback("Demanar", "order"),
 ])
 
-const errNotModifiedDescription = "Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"
-
 // Sets the main message for 'user' to the given 'text', either by
 // creating a new one or updating the existing one (if any).
 async function setMainMsg(user: IUser, text: string): Promise<void> {
 	if (!user) {
 		console.error("Could not set main message: 'user' is undefined.");
-		return ;
+		return;
 	}
-	if (user.mainMsgId) {
-		try {
-			await bot.telegram.editMessageText(user.tgId, user.mainMsgId, undefined, text, { 
-				parse_mode: "MarkdownV2", 
-				...keyboard
-			});
-		} catch (err) {
-			if (err.response.description !== errNotModifiedDescription)
-			{
-				console.error('Error updating main message. Sending a new one...'/*, error*/);
-				setNewMainMsg(user, text);
-			}
+	try {
+		if (user.mainMsgId) {
+			console.log(`Setting main msg to ${user.name}.`);
+			await bot.telegram.deleteMessage(user.tgId, user.mainMsgId)
+			.catch(err => console.error(`Could not delete message for ${user.name} `, err));
 		}
-	} else {
 		await setNewMainMsg(user, text);
+	} catch (err) {
+		console.error(`Error updating main message for ${user.name}.`, err);
 	}
 }
 
 async function setNewMainMsg(user: IUser, text: string): Promise<void> {
 	try {
+		console.log(`Setting new main msg for ${user.name}.`);
 		const sentMessage = await bot.telegram.sendMessage(user.tgId, text, {
 			parse_mode: "MarkdownV2",
 			...keyboard

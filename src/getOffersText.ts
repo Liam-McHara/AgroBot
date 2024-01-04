@@ -1,6 +1,8 @@
 import { IUser } from './models/User';
 
-export async function getOffersText(users: IUser[]): Promise<string> {
+// Given an array of IUsers, returns a string representing the offers grouped by producer.
+// NOTE: It uses MarkdownV2.
+export function getOffersText(users: IUser[]): string {
 	try {
 		let str: string = "";
 		users.forEach(producer => {
