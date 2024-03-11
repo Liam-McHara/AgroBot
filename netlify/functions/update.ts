@@ -1,7 +1,16 @@
-import { run } from "../..";
-import { bot } from "../../src/globals";
+import { Telegraf } from "telegraf"
 
-run();
+const bot = new Telegraf(process.env.BOT_TOKEN)
+
+bot.start(ctx => {
+  console.log("Received /start command")
+  try {
+    return ctx.reply("Hi")
+  } catch (e) {
+    console.error("error in start action:", e)
+    return ctx.reply("Error occured")
+  }
+})
 
 exports.handler = async (event) => {
 	const logMsg = `Received an update from Telegram! : ${event.body}`;
