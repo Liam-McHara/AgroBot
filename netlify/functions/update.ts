@@ -6,8 +6,8 @@ run();
 exports.handler = async (event) => {
 	const logMsg = `Received an update from Telegram! : ${event.body}`;
 	console.log(logMsg);
-	bot.handleUpdate(JSON.parse(event.body));
 	try {
+		bot.handleUpdate(JSON.parse(event.body));
 		return { statusCode: 200, body: logMsg };
 	} catch (error) {
 		console.error(error);
