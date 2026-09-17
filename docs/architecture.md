@@ -213,6 +213,10 @@ stop counting as held.
      └─────── expire (job, at expires_at) ──► expired
 ```
 
+The Mini App's *confirm and deliver* is the top row travelled in one transaction, not a new
+edge: the reservation still passes through `confirmed`, so no guard, status or record differs
+from the two-step path.
+
 | Transition | Actor | Guard | Side effects |
 |---|---|---|---|
 | create | requester | offer reservable, quantity ≤ available (row lock), requester ≠ producer | snapshot price, `expires_at`, N6, system line "reserved", SSE `reservation.changed` + `board.changed` |
@@ -220,6 +224,7 @@ stop counting as held.
 | reject | producer | pending | reason, N8, release, system line |
 | cancel | requester (pending/confirmed), producer (confirmed) | | reason, `closed_by`, N8, release, system line |
 | deliver | either | confirmed | deduct from offer, N8, system line |
+| confirm-and-deliver | producer, Mini App only | pending | one transaction: the `confirm` then the `deliver` side effects, both system lines, a **single** N8 (`delivered`). Not offered as a bot quick action. |
 | remind | job | pending, `reminded_at IS NULL`, now ≥ `expires_at − reminder` | N7, set `reminded_at` |
 | expire | job | pending, now ≥ `expires_at` | N8 to both, release, system line |
 | price-resolve | catalog sync | `unit_price_cents IS NULL`, product resolved, status active | set snapshot, N5 |
@@ -378,15 +383,15 @@ Behaviour:
 
 | Variable | Required | Notes |
 |---|---|---|
-| `BOT_TOKEN` | yes | From @BotFather. |
-| `BOT_USERNAME`, `MINIAPP_SHORT_NAME` | yes | For deep links. |
+| `BOT_TOKEN` | yes | AgroBot 1.0's existing token (ADR-0013). 1.0 must be stopped before 2.0 uses it — one token, one consumer. |
+| `BOT_USERNAME`, `MINIAPP_SHORT_NAME` | yes | For deep links. `BOT_USERNAME` is 1.0's; the Mini App short name is created in @BotFather on the same bot. |
 | `BOT_MODE` | no | `webhook` (default) or `polling` (dev). |
 | `PUBLIC_URL` | yes in webhook mode | HTTPS base; webhook is `PUBLIC_URL/telegram/webhook`. |
 | `TELEGRAM_WEBHOOK_SECRET` | yes in webhook mode | Random 32+ chars. |
 | `DATABASE_URL` | yes | Postgres connection string. |
 | `ADMIN_TELEGRAM_IDS` | yes (first deploy) | Comma-separated; auto-approved as admins on `/start`. |
 | `CATALOG_SOURCE` | yes | `sheets` or `csv`. |
-| `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_RANGE`, `GOOGLE_SERVICE_ACCOUNT_JSON` | sheets mode | Base64 key. |
+| `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_RANGE`, `GOOGLE_SERVICE_ACCOUNT_JSON` | sheets mode | Range defaults to `Productes!A:E` (PRD §6). Key is base64; the sheet is shared read-only with that service account. |
 | `CATALOG_CSV_URL` | csv mode | |
 | `DEFAULT_LOCALE` | no | `ca`. |
 | `TZ` | no | `Europe/Madrid` (display only; storage is UTC). |
@@ -420,8 +425,10 @@ pnpm dev                        # server (tsx watch, BOT_MODE=polling) + miniapp
 - CI (`.github/workflows/ci.yml`) on every PR and on `main`: `pnpm lint`, `pnpm typecheck`,
   `pnpm test` (unit + integration with a Postgres service container), `pnpm build`,
   `pnpm e2e` (Playwright against the built server with dev auth bypass and a seeded DB).
-- Deploy: container to Fly.io (default; `fly.toml` in repo) with Neon Postgres; secrets via
-  `fly secrets`. Any provider that runs a container and gives an HTTPS URL works.
+- Deploy: container to **Railway** (`railway.json` in repo) with **Railway Postgres**; secrets as
+  Railway service variables, `PUBLIC_URL` from the service domain (ADR-0012). Daily managed
+  backups; the restore drill in M6 proves them. Nothing in the image is Railway-specific, so any
+  provider that runs a container and gives an HTTPS URL remains a working target.
 - Release: tag `v2.x.y`; `/status` shows the version from `package.json` + git SHA baked at
   build time.
 

@@ -39,7 +39,7 @@ Rules:
 - **ADRs are append-only.** To change a decision, write a new ADR that supersedes the old one.
 - **Definitions of done are the acceptance test.** A milestone is not finished because its
   tasks are checked; it is finished when its definition of done holds.
-- **Open questions live in [prd.md §13](prd.md#13-open-questions-to-settle-in-the-first-implementation-sessions)**
+- **Open questions live in [prd.md §13](prd.md#13-open-questions)**
   with a default. Resolving one means editing the relevant section and deleting the row.
 
 ## Starting a milestone in a fresh Claude Code session

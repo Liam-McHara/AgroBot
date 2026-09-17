@@ -116,6 +116,10 @@ notifications speak to me the way I want.
 **As** an admin **I** connect the group's price sheet once **so that** products and prices in
 the app are always the ones the group agreed on.
 
+- The group keeps one tab named **`Productes`** with the columns below, shared **read-only with
+  the server's Google service account** (`GOOGLE_SERVICE_ACCOUNT_JSON`). A published-CSV URL with
+  the same columns is a supported fallback (`CATALOG_SOURCE=csv`) for groups that would rather not
+  manage a key; it makes the sheet readable by anyone holding the URL.
 - The server reads the configured sheet **hourly** and whenever an admin taps **Sync now**.
 - Expected columns (header row, order free, headers accepted in Catalan, Spanish or English):
 
@@ -225,6 +229,12 @@ for me.
 ### US-4.4 Deliver (either party)
 - Only while confirmed. Marks **delivered** (terminal), deducts the quantity permanently from
   the offer (so it stops being "held" and becomes "gone"), notifies the other party.
+- **Confirm and deliver in one action (producer, Mini App only).** On the reservation screen a
+  producer holding a *pending* reservation can *confirm and mark delivered* for a handover that
+  already happened face to face. It runs both transitions in one transaction, writes both system
+  lines and sends the requester a single delivered notification. The bot quick actions stay
+  *Confirm* / *Reject* / *Open*: a one-tap irreversible delivery from a notification is too easy
+  to hit by accident.
 
 ### US-4.5 Pending reservations expire
 - `reservation_reminder_hours_before_expiry` (default 12) before `expires_at`, the producer is
@@ -331,13 +341,18 @@ Kept in the data model where cheap (price snapshots, timestamps) so they can be 
 | Quality | Strict TypeScript, lint, unit tests for domain rules, integration tests against real Postgres, e2e tests of the main flows, CI required on every PR. |
 | Data | Nothing is hard-deleted except by explicit admin action on rejected products; everything else is status-based. Daily managed backups on the hosting provider. |
 
-## 13. Open questions (to settle in the first implementation sessions)
+## 13. Open questions
 
-| # | Question | Default if unanswered |
+**None open.** Q1–Q6 were answered on 2026-09-17; each answer now lives in the section it
+governs, and the rows were deleted per the workflow in `docs/README.md`. Where to find them:
+
+| # | Question | Answer, and where it lives |
 |---|---|---|
-| Q1 | Exact Google Sheet: id, tab name, whether it already has the columns in §6. | Create a new tab `Productes` with the columns above. |
-| Q2 | Sheet access: share it with a service account (recommended) or publish it as CSV. | Service account; CSV mode kept as fallback. |
-| Q3 | Hosting provider among Fly.io / Railway / Render / own VPS. | Fly.io + Neon Postgres, both free-tier friendly. |
-| Q4 | Bot username and Mini App short name. | To be created in @BotFather during M0. |
-| Q5 | Should quantity steps be per-unit constants (as specified) or configurable? | Constants. |
-| Q6 | Should the producer be able to *confirm and deliver* in one tap for face-to-face handovers? | No in 2.0; two taps. |
+| Q1 | Exact Google Sheet: id, tab name, columns. | New tab `Productes` with the columns in §6. Id is deployment config (`GOOGLE_SHEET_ID`, ARCH §13). |
+| Q2 | Sheet access: service account or published CSV. | Service account; CSV kept as fallback. §6, ARCH §11. |
+| Q3 | Hosting provider. | Railway app + Railway Postgres. ARCH §15, ADR-0012. |
+| Q4 | Bot username and Mini App short name. | Reuse AgroBot 1.0's bot and token; 1.0 stops before 2.0 goes live. ARCH §13, ADR-0013. |
+| Q5 | Quantity steps: constants or configurable. | Per-unit constants, as specified in §7 US-3.1. |
+| Q6 | Producer *confirm and deliver* in one tap. | Yes, but only in the Mini App. §8 US-4.4, ARCH §6, ADR-0014. |
+
+New questions are added back to this section with a default, and resolved the same way.
