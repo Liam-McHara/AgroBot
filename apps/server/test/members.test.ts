@@ -104,6 +104,23 @@ suite('domain/members', () => {
       expect(await notificationsFor(admin.id)).toHaveLength(0);
     });
 
+    it('allows only one concurrent arrival to consume an invite', async () => {
+      const admin = await bootstrapAdmin();
+      await service.createInvite(admin, '@shared_name');
+
+      const arrivals = await Promise.all([
+        service.identify(identity(2101, { username: 'shared_name' })),
+        service.identify(identity(2102, { username: 'shared_name' })),
+      ]);
+      const approved = arrivals.filter((arrival) => arrival.autoApproved === 'invite');
+      const waiting = arrivals.filter((arrival) => arrival.member.status === 'pending');
+
+      expect(approved).toHaveLength(1);
+      expect(waiting).toHaveLength(1);
+      const [invite] = await database!.db.select().from(memberInvites);
+      expect(invite?.usedBy).toBe(approved[0]?.member.id);
+    });
+
     it('approves an invited Telegram id even without a username', async () => {
       const admin = await bootstrapAdmin();
       await service.createInvite(admin, '2003');

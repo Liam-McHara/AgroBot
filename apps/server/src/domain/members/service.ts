@@ -81,7 +81,8 @@ export function createMembersService(deps: MembersServiceDeps) {
             : eq(memberInvites.telegramId, identity.id),
         ),
       )
-      .limit(1);
+      .limit(1)
+      .for('update');
     return invite ?? null;
   }
 
