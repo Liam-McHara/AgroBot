@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
-import type { Me } from '@agrobot/shared';
+import { DEFAULT_SETTINGS, type Me } from '@agrobot/shared';
 import Hello from './Hello.svelte';
 import { apiFetch } from '../lib/api/client.js';
 import { setLanguage } from '../lib/i18n/index.svelte.js';
@@ -18,6 +18,7 @@ const MARTA: Me = {
   language: 'ca',
   role: 'member',
   status: 'approved',
+  settings: DEFAULT_SETTINGS,
 };
 
 beforeEach(() => {

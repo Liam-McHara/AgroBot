@@ -4,6 +4,15 @@ import * as schema from './schema/index.js';
 
 export type Database = PostgresJsDatabase<typeof schema>;
 
+/** What `db.transaction()` hands its callback. */
+export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/**
+ * Anything a query can run on: the pool or a transaction. Domain services take this so a
+ * caller decides the transaction boundary (ARCH §2 "receives ports as parameters").
+ */
+export type Executor = Database | Transaction;
+
 export interface DatabaseHandle {
   readonly db: Database;
   readonly sql: postgres.Sql;
