@@ -102,7 +102,7 @@ products; admins see sync health.
 **Spec.** PRD §6, US-2.1–2.2, N4, N5, N12 · ARCH §10, §11 (products, admin/catalog) · ADR-0003.
 
 **Tasks**
-- [ ] `integrations/google-sheets.ts` (service account) and `csv-catalog.ts` behind one
+- [x] `integrations/google-sheets.ts` (service account) and `csv-catalog.ts` behind one
       `CatalogSource` interface; header alias normalization (ca/es/en); row parser with zod,
       unit mapping, price parsing (`,`/`.`); unit tests with fixture sheets incl. broken rows.
 - [ ] `domain/catalog`: `applyDiff` in one transaction (upsert by slug, archive missing,
