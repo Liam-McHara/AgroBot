@@ -18,9 +18,9 @@
     "format": "prettier --write .",
     "i18n:check": "node scripts/check-i18n.mjs",
     "dev": "pnpm run build:shared && pnpm -r --parallel --stream dev",
-    "db:migrate": "pnpm --filter @agrobot/server db:migrate",
-    "db:seed": "pnpm --filter @agrobot/server db:seed",
-    "db:generate": "pnpm --filter @agrobot/server db:generate"
+    "db:migrate": "pnpm run build:shared && pnpm --filter @agrobot/server db:migrate",
+    "db:seed": "pnpm run build:shared && pnpm --filter @agrobot/server db:seed",
+    "db:generate": "pnpm run build:shared && pnpm --filter @agrobot/server db:generate"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
