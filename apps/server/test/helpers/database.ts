@@ -10,9 +10,7 @@ import { seed } from '../../src/db/seed.js';
  * and has to fail loudly.
  */
 export const TEST_DATABASE_URL =
-  process.env['TEST_DATABASE_URL'] ??
-  process.env['DATABASE_URL'] ??
-  'postgres://agrobot:agrobot@localhost:5432/agrobot_test';
+  process.env['TEST_DATABASE_URL'] ?? 'postgres://agrobot:agrobot@localhost:5432/agrobot_test';
 
 /** Tables that hold test data, in an order safe for a single `TRUNCATE`. */
 const DATA_TABLES = [
