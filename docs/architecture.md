@@ -49,7 +49,8 @@ an interface (§7).
 │   │   │   │                   #   reservations, threads, notifications, settings
 │   │   │   │                   #   (services + state machines, no HTTP/Telegram code)
 │   │   │   ├── http/           # Hono app, middlewares (auth, errors, logging), routes
-│   │   │   ├── bot/            # grammY: commands, callback (quick action) handlers, i18n
+│   │   │   ├── bot/            # grammY: commands, callback (quick action) handlers,
+│   │   │   │                   #   notifications/ (renderers per kind), deep links
 │   │   │   ├── jobs/           # scheduler + job implementations
 │   │   │   ├── integrations/   # google-sheets.ts, csv-catalog.ts, telegram-api.ts
 │   │   │   ├── realtime/       # SSE hub
@@ -73,6 +74,7 @@ an interface (§7).
 │           ├── i18n/           # t() with plural/number/date formatting
 │           └── messages/       # ca.json, es.json (+ typed keys)
 ├── docs/                       # this specification
+├── e2e/                        # Playwright suite against the built server (§15)
 ├── legacy/                     # AgroBot 1.0, frozen
 ├── scripts/                    # workspace scripts (i18n catalogue check, Postgres init)
 ├── docker-compose.yml          # local Postgres
@@ -95,7 +97,7 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
 | Bot | **grammY** | Webhook mode in production (`webhookCallback(bot, "hono")`), long polling in dev (`BOT_MODE=polling`). Plugins: `@grammyjs/i18n` not used (we share our own catalogue), `auto-retry` transformer for 429s. |
 | DB | **Postgres 16 + Drizzle ORM** | `drizzle-kit` migrations committed in `apps/server/src/db/migrations`. Driver `postgres` (postgres.js). |
 | Validation | **zod** in `packages/shared` | Single source for API contracts; server validates, client infers types. |
-| Frontend | **Svelte 5 + Vite**, `@telegram-apps/sdk` | Router: `svelte-spa-router` or SvelteKit in SPA mode; decided at M1 (default: plain Svelte + `svelte-spa-router`, fewer moving parts). |
+| Frontend | **Svelte 5 + Vite**, `@telegram-apps/sdk` | Router: `svelte-spa-router` (hash routes), decided in M1: a plain SPA with no framework server side, fewer moving parts than SvelteKit. |
 | Realtime | Server-Sent Events | Native `EventSource` in the Mini App; no socket library. |
 | Scheduler | `croner` (or `setInterval` with jitter) inside the server process | Jobs are idempotent and lease-free because there is one instance. |
 | Google Sheets | `googleapis` (Sheets v4) with a service account | Fallback mode: fetch a published-CSV URL with `undici` and parse with `csv-parse`. |
@@ -116,10 +118,13 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
 - Result is attached to context as `ctx.var.member` with `status` and `role`.
 - Route guards: `requireMember` (status `approved`), `requireAdmin` (role `admin`). Applicants
   and suspended members can only call `GET /api/me`, which is how the gate screen knows what
-  to show.
+  to show; everything else answers 403 with `NOT_APPROVED` or `SUSPENDED`. The guards call
+  `domain/members` (`assertMember`, `assertAdmin`), and admin actions re-check the actor's row
+  inside their transaction, so a stale in-memory copy can never authorize anything.
 - Dev only: if `DEV_AUTH_BYPASS_TELEGRAM_ID` is set **and** `NODE_ENV !== 'production'`, a
-  request with `Authorization: dev <telegramId>` is accepted. The Mini App uses it when it is
-  not running inside Telegram (`import.meta.env.DEV`).
+  request with `Authorization: dev <telegramId>` is accepted. The Mini App sends it whenever it
+  is not running inside Telegram (no `initData`), in development and in the e2e suite alike;
+  the server is the only gate, so a production build opened in a browser gets a 401.
 
 ### Telegram → bot
 - Webhook URL `POST /telegram/webhook`, registered on boot with
@@ -278,7 +283,8 @@ reject (offers withdrawn, reservations cancelled), `active ⇄ archived` by sync
    now() ORDER BY created_at LIMIT 20 FOR UPDATE SKIP LOCKED`, renders text + inline keyboard
    in the recipient's language, calls `sendMessage`, marks `sent` (stores
    `telegram_message_id`) or schedules a retry with exponential backoff (1 m, 5 m, 30 m, then
-   `failed`). Telegram 429 `retry_after` is honoured.
+   `failed`). Telegram 429 `retry_after` is honoured and does not count as an attempt; a
+   recipient who blocked the bot (403) is `failed` at once.
 3. Chat throttle (N9): `dedupe_key = 'chat:<reservationId>:<memberId>'`. Enqueue is skipped if a
    row with that key exists and the member has not read the thread since (`thread_reads`).
    Reading the thread (`POST …/read`) deletes the key so the next burst notifies again.

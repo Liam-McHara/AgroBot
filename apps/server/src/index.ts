@@ -5,7 +5,12 @@ import { createLogger } from './logger.js';
 import { createDatabase } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { createApp } from './http/app.js';
-import { createBot, WEBHOOK_PATH } from './bot/index.js';
+import { createMembersService } from './domain/members/service.js';
+import { createBot, registerCommands, WEBHOOK_PATH } from './bot/index.js';
+import { grammySender } from './integrations/telegram-api.js';
+import { createScheduler } from './jobs/scheduler.js';
+import { DISPATCH_EVERY_MS, dispatchNotifications } from './jobs/notifications-dispatch.js';
+import { LANGUAGES } from '@agrobot/shared';
 import { APP_VERSION, GIT_COMMIT } from './version.js';
 
 /**
@@ -29,7 +34,11 @@ async function main(): Promise<void> {
 
   const logger = createLogger(env);
   const database = createDatabase(env.DATABASE_URL);
-  const deps = { db: database.db, env, logger };
+  const members = createMembersService({
+    db: database.db,
+    adminTelegramIds: env.ADMIN_TELEGRAM_IDS,
+  });
+  const deps = { db: database.db, env, logger, members };
 
   logger.info({ version: APP_VERSION, commit: GIT_COMMIT, mode: env.BOT_MODE }, 'starting');
 
@@ -38,6 +47,15 @@ async function main(): Promise<void> {
 
   const bot = createBot(deps);
   const app = createApp(deps, env.BOT_MODE === 'webhook' ? { bot } : {});
+
+  // ARCH §9: the in-process jobs. Only the outbox dispatcher exists yet (ADR-0009).
+  const scheduler = createScheduler(logger);
+  const sender = grammySender(bot.api);
+  scheduler.add({
+    name: 'notifications.dispatch',
+    everyMs: DISPATCH_EVERY_MS,
+    run: () => dispatchNotifications({ db: database.db, env, sender, logger }),
+  });
 
   const server: ServerType = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     logger.info({ port: info.port }, 'http listening');
@@ -69,6 +87,11 @@ async function main(): Promise<void> {
     logger.info({ url, username: bot.botInfo.username }, 'webhook registered');
   }
 
+  scheduler.start();
+  registerCommands(bot, LANGUAGES).catch((error: unknown) => {
+    logger.warn({ err: error }, 'could not register the command menu');
+  });
+
   /**
    * A restart must lose nothing (PRD §12): stop taking requests, let the bot finish the
    * update it is holding, close the pool. All of it on a deadline — a platform that sends
@@ -82,6 +105,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'shutting down');
 
     const httpClosed = new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    const jobsStopped = scheduler.stop();
     const botStopped =
       env.BOT_MODE === 'polling'
         ? bot.stop().catch((error: unknown) => logger.warn({ err: error }, 'bot stop failed'))
@@ -91,7 +115,7 @@ async function main(): Promise<void> {
     });
 
     const outcome = await Promise.race([
-      Promise.all([httpClosed, botStopped]).then(() => 'drained' as const),
+      Promise.all([httpClosed, botStopped, jobsStopped]).then(() => 'drained' as const),
       deadline,
     ]);
     if (outcome === 'deadline') logger.warn('shutdown deadline reached, exiting anyway');

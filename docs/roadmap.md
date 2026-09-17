@@ -69,20 +69,20 @@ screen speaks the member's language.
 **Spec.** PRD §2, §5, US-1.1–1.5, N1–N2 · ARCH §4, §8 (outbox), §12 gate · ADR-0010.
 
 **Tasks**
-- [ ] `domain/members`: apply (create applicant), auto-approve (invites, `ADMIN_TELEGRAM_IDS`),
+- [x] `domain/members`: apply (create applicant), auto-approve (invites, `ADMIN_TELEGRAM_IDS`),
       approve/reject/suspend/reinstate/promote/demote with last-admin guard; unit tests.
-- [ ] `initData` validation middleware with constant-time compare, `auth_date` window, member
+- [x] `initData` validation middleware with constant-time compare, `auth_date` window, member
       upsert, `requireMember`/`requireAdmin`; integration tests incl. tampered hash.
-- [ ] Notification outbox: table already exists; implement enqueue port, dispatcher job with
+- [x] Notification outbox: table already exists; implement enqueue port, dispatcher job with
       backoff and `retry_after`, renderer registry keyed by `kind`; N1 and N2 renderers with
       quick actions; integration test with a fake Telegram API.
-- [ ] Bot: `/start` full behaviour (applicant, repeat, pre-approved, admin bootstrap, member with
+- [x] Bot: `/start` full behaviour (applicant, repeat, pre-approved, admin bootstrap, member with
       *Open AgroBot* button); quick actions `approve:<id>` / `reject:<id>` editing the original
       message; `/help`.
-- [ ] API: `GET/PATCH /me`, `GET /admin/members`, member actions, `GET/POST/DELETE /admin/invites`.
-- [ ] Mini App: gate screen (applicant / rejected / suspended), bottom navigation shell,
+- [x] API: `GET/PATCH /me`, `GET /admin/members`, member actions, `GET/POST/DELETE /admin/invites`.
+- [x] Mini App: gate screen (applicant / rejected / suspended), bottom navigation shell,
       Settings (language, display name), Admin → Members (applicants, members, invites).
-- [ ] i18n: all strings of this milestone in `ca` and `es`; language switch re-renders
+- [x] i18n: all strings of this milestone in `ca` and `es`; language switch re-renders
       instantly; notifications use recipient language.
 
 **Definition of done**

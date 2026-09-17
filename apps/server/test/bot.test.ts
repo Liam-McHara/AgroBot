@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Update, UserFromGetMe } from 'grammy/types';
+import type { InlineKeyboardMarkup, Update, UserFromGetMe } from 'grammy/types';
 import { eq } from 'drizzle-orm';
-import { members } from '../src/db/schema/index.js';
+import { members, notifications } from '../src/db/schema/index.js';
 import { createBot } from '../src/bot/index.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 import { testDeps } from './helpers/app.js';
@@ -25,6 +25,8 @@ const BOT_INFO: UserFromGetMe = {
   supports_join_request_queries: false,
 };
 
+const ADMIN_ID = 7000;
+
 interface SentCall {
   method: string;
   payload: Record<string, unknown>;
@@ -36,33 +38,75 @@ interface SentCall {
  */
 function botUnderTest() {
   const sent: SentCall[] = [];
-  const bot = createBot(testDeps(database!));
+  const bot = createBot(testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) }));
   bot.botInfo = BOT_INFO;
   bot.api.config.use(async (_prev, method, payload) => {
     sent.push({ method, payload: payload as Record<string, unknown> });
     return { ok: true, result: { message_id: sent.length } } as never;
   });
-  return { bot, sent };
+  const last = (method: string) => sent.filter((call) => call.method === method).at(-1);
+  return { bot, sent, last };
 }
 
-function startUpdate(from: {
+interface From {
   id: number;
   first_name: string;
   last_name?: string;
   username?: string;
   language_code?: string;
-}): Update {
+}
+
+let updateId = 0;
+
+function textUpdate(from: From, text: string): Update {
+  updateId += 1;
+  const command = text.startsWith('/') ? text.split(' ')[0]! : null;
   return {
-    update_id: from.id,
+    update_id: updateId,
     message: {
-      message_id: 1,
+      message_id: updateId,
       date: Math.floor(Date.now() / 1000),
       chat: { id: from.id, type: 'private', first_name: from.first_name },
       from: { is_bot: false, ...from },
-      text: '/start',
-      entities: [{ type: 'bot_command', offset: 0, length: 6 }],
+      text,
+      ...(command
+        ? { entities: [{ type: 'bot_command', offset: 0, length: command.length }] }
+        : {}),
     },
   } as Update;
+}
+
+function callbackUpdate(from: From, data: string, messageText = 'Nova sol·licitud'): Update {
+  updateId += 1;
+  return {
+    update_id: updateId,
+    callback_query: {
+      id: String(updateId),
+      chat_instance: 'x',
+      from: { is_bot: false, ...from },
+      data,
+      message: {
+        message_id: 99,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: from.id, type: 'private', first_name: from.first_name },
+        text: messageText,
+      },
+    },
+  } as Update;
+}
+
+const start = (from: From) => textUpdate(from, '/start');
+const ADMIN: From = { id: ADMIN_ID, first_name: 'Guillem', language_code: 'ca' };
+const MARTA: From = { id: 7001, first_name: 'Marta', last_name: 'Puig', username: 'marta_hort' };
+
+function buttons(call: SentCall | undefined) {
+  const markup = call?.payload['reply_markup'] as InlineKeyboardMarkup | undefined;
+  return markup?.inline_keyboard.flat() ?? [];
+}
+
+async function memberByTelegramId(telegramId: number) {
+  const [row] = await database!.db.select().from(members).where(eq(members.telegramId, telegramId));
+  return row;
 }
 
 suite('bot', () => {
@@ -74,40 +118,174 @@ suite('bot', () => {
     await database?.close();
   });
 
-  it('answers /start in Catalan to a Catalan client', async () => {
-    const { bot, sent } = botUnderTest();
-    await bot.handleUpdate(startUpdate({ id: 7001, first_name: 'Marta', language_code: 'ca' }));
+  describe('/start (PRD US-1.1)', () => {
+    it('bootstraps a configured admin and greets them with the Open AgroBot button', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      const reply = last('sendMessage');
+      expect(reply?.payload['text']).toContain('Hola, Guillem!');
+      expect(reply?.payload['parse_mode']).toBe('HTML');
+      const [button] = buttons(reply);
+      expect(button?.text).toBe("Obre l'AgroBot");
+      expect('url' in button! && button.url).toBe('https://t.me/AgroBotTest/app');
+      expect(await memberByTelegramId(ADMIN_ID)).toMatchObject({
+        role: 'admin',
+        status: 'approved',
+      });
+    });
 
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.method).toBe('sendMessage');
-    expect(sent[0]?.payload['text']).toContain('Hola, Marta!');
-    expect(sent[0]?.payload['parse_mode']).toBe('HTML');
+    it('tells a stranger the request was sent and queues N1 for the admins', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+
+      expect(last('sendMessage')?.payload['text']).toContain('He enviat la teva sol·licitud');
+      expect(buttons(last('sendMessage'))).toHaveLength(0);
+      const marta = await memberByTelegramId(MARTA.id);
+      expect(marta).toMatchObject({ status: 'pending', displayName: 'Marta Puig' });
+
+      const admin = (await memberByTelegramId(ADMIN_ID))!;
+      const queued = await database!.db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.memberId, admin.id));
+      expect(queued).toHaveLength(1);
+      expect(queued[0]).toMatchObject({ kind: 'N1', payload: { applicantId: marta!.id } });
+    });
+
+    it('repeats the waiting message on a second /start without a second N1', async () => {
+      const { bot, sent } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      await bot.handleUpdate(start(MARTA));
+      expect(sent.at(-1)?.payload['text']).toContain('encara està pendent');
+      expect(await database!.db.select().from(notifications)).toHaveLength(1);
+    });
+
+    it('answers in Spanish to an es-* client (PRD US-1.5)', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start({ id: 7002, first_name: 'Jordi', language_code: 'es-ES' }));
+      expect(last('sendMessage')?.payload['text']).toContain('He enviado tu solicitud');
+    });
+
+    it('lets a pre-approved username straight in (US-1.3)', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      const deps = testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) });
+      await deps.members.createInvite((await memberByTelegramId(ADMIN_ID))!, '@Marta_Hort');
+
+      await bot.handleUpdate(start(MARTA));
+      expect(last('sendMessage')?.payload['text']).toContain('Benvingut/da');
+      expect(await memberByTelegramId(MARTA.id)).toMatchObject({ status: 'approved' });
+    });
+
+    it('tells rejected and suspended people where they stand', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      const deps = testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) });
+      const admin = (await memberByTelegramId(ADMIN_ID))!;
+      const marta = (await memberByTelegramId(MARTA.id))!;
+
+      await deps.members.reject(admin, marta.id);
+      await bot.handleUpdate(start(MARTA));
+      expect(last('sendMessage')?.payload['text']).toContain('no ha estat acceptada');
+
+      await deps.members.approve(admin, marta.id);
+      await deps.members.suspend(admin, marta.id);
+      await bot.handleUpdate(start(MARTA));
+      expect(last('sendMessage')?.payload['text']).toContain('està suspès');
+    });
+
+    it('escapes a display name that looks like markup (ARCH §17)', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start({ id: 7004, first_name: '<b>Pau</b>' }));
+      expect(last('sendMessage')?.payload['text']).toContain('&lt;b&gt;Pau&lt;/b&gt;');
+    });
   });
 
-  it('answers /start in Spanish to an es-* client (PRD US-1.5)', async () => {
-    const { bot, sent } = botUnderTest();
-    await bot.handleUpdate(startUpdate({ id: 7002, first_name: 'Jordi', language_code: 'es-ES' }));
+  describe('/help and stray text (ADR-0013)', () => {
+    it('orients anyone who types at the bot, with the app button for members', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(textUpdate(ADMIN, '/help'));
+      expect(last('sendMessage')?.payload['text']).toContain('/help');
+      expect(buttons(last('sendMessage'))).toHaveLength(1);
 
-    expect(sent[0]?.payload['text']).toContain('¡Hola, Jordi!');
+      await bot.handleUpdate(textUpdate(MARTA, '/o tomàquets 3'));
+      expect(last('sendMessage')?.payload['text']).toContain('/help');
+      expect(buttons(last('sendMessage'))).toHaveLength(0);
+    });
   });
 
-  it('records the person as an applicant, once, however often they press Start', async () => {
-    const { bot } = botUnderTest();
-    const update = startUpdate({ id: 7003, first_name: 'Pau', username: 'pau' });
-    await bot.handleUpdate(update);
-    await bot.handleUpdate({ ...update, update_id: 2 });
+  describe('quick actions approve:<id> / reject:<id> (PRD §9, US-1.2)', () => {
+    async function applicantId() {
+      return (await memberByTelegramId(MARTA.id))!.id;
+    }
 
-    const rows = await database!.db.select().from(members).where(eq(members.telegramId, 7003));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe('pending');
-    expect(rows[0]?.username).toBe('pau');
-  });
+    it('approves from the button, edits the message and queues N2', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      const id = await applicantId();
 
-  it('escapes a display name that looks like markup (ARCH §17)', async () => {
-    const { bot, sent } = botUnderTest();
-    await bot.handleUpdate(startUpdate({ id: 7004, first_name: '<b>Pau</b>' }));
+      await bot.handleUpdate(callbackUpdate(ADMIN, `approve:${id}`));
 
-    expect(sent[0]?.payload['text']).toContain('&lt;b&gt;Pau&lt;/b&gt;');
-    expect(sent[0]?.payload['text']).not.toContain('<b>Pau</b>');
+      expect(await memberByTelegramId(MARTA.id)).toMatchObject({ status: 'approved' });
+      expect(last('answerCallbackQuery')?.payload['text']).toBe('Marta Puig ja és membre.');
+      const edited = last('editMessageText');
+      expect(edited?.payload['text']).toBe('Nova sol·licitud\n\n✅ Aprovada per Guillem');
+      expect(edited?.payload['reply_markup']).toBeUndefined();
+
+      const n2 = await database!.db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.memberId, id));
+      expect(n2).toHaveLength(1);
+      expect(n2[0]).toMatchObject({ kind: 'N2', payload: { decision: 'approved' } });
+    });
+
+    it('rejects from the button', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      await bot.handleUpdate(callbackUpdate(ADMIN, `reject:${await applicantId()}`));
+      expect(await memberByTelegramId(MARTA.id)).toMatchObject({ status: 'rejected' });
+      expect(last('editMessageText')?.payload['text']).toContain('❌ Rebutjada per Guillem');
+    });
+
+    it('explains a stale button instead of failing silently', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      const id = await applicantId();
+      await bot.handleUpdate(callbackUpdate(ADMIN, `approve:${id}`));
+      await bot.handleUpdate(callbackUpdate(ADMIN, `reject:${id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        'Aquesta sol·licitud ja està resolta: aprovat/da.',
+      );
+      expect(last('editMessageText')?.payload['text']).toContain('— aprovat/da');
+    });
+
+    it('refuses a tap from someone who is not an admin', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      const other: From = { id: 7005, first_name: 'Pere' };
+      await bot.handleUpdate(start(other));
+      await bot.handleUpdate(callbackUpdate(other, `approve:${await applicantId()}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        'Només els administradors poden fer això.',
+      );
+      expect(await memberByTelegramId(MARTA.id)).toMatchObject({ status: 'pending' });
+    });
+
+    it('answers unknown and dangling callback data', async () => {
+      const { bot, last } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(callbackUpdate(ADMIN, 'confirm:whatever'));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe('Aquest botó ja no fa res.');
+      await bot.handleUpdate(callbackUpdate(ADMIN, 'approve:00000000-0000-4000-8000-000000000000'));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe('No trobo aquesta sol·licitud.');
+    });
   });
 });

@@ -19,6 +19,10 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.svelte-kit/**',
       'apps/server/src/db/migrations/**',
+      // The Mini App build copied next to the server (ARCH §15) and the Playwright output.
+      'apps/server/public/**',
+      'playwright-report/**',
+      'test-results/**',
     ],
   },
 
@@ -68,6 +72,7 @@ export default tseslint.config(
   {
     files: [
       'scripts/**/*.{js,mjs,ts}',
+      'e2e/**/*.mjs',
       '*/*/scripts/**/*.{js,mjs,ts}',
       '**/*.config.{js,mjs,ts}',
       'apps/server/src/db/seed.ts',
@@ -87,7 +92,8 @@ export default tseslint.config(
   },
   {
     files: ['apps/miniapp/**/*.{ts,svelte}'],
-    languageOptions: { globals: { ...globals.browser } },
+    // `__APP_VERSION__` is injected by Vite from package.json (apps/miniapp/vite.config.ts).
+    languageOptions: { globals: { ...globals.browser, __APP_VERSION__: 'readonly' } },
   },
 
   prettier,

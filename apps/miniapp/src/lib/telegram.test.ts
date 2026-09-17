@@ -93,3 +93,18 @@ describe('initTelegram outside Telegram', () => {
     expect(telegram.startParam).toBeNull();
   });
 });
+
+describe('routeForStartParam (ARCH §4)', () => {
+  it('maps the deep-link grammar to routes and ignores the rest', async () => {
+    const { routeForStartParam } = await import('./telegram.js');
+    expect(routeForStartParam('a_members')).toBe('/admin/members');
+    expect(routeForStartParam('r_9f1c0c4e-0000-4000-8000-000000000000')).toBe(
+      '/reservations/9f1c0c4e-0000-4000-8000-000000000000',
+    );
+    expect(routeForStartParam('o_9f1c0c4e-0000-4000-8000-000000000000')).toBe(
+      '/offers/9f1c0c4e-0000-4000-8000-000000000000',
+    );
+    expect(routeForStartParam('x_whatever')).toBeNull();
+    expect(routeForStartParam(null)).toBeNull();
+  });
+});

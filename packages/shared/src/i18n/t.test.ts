@@ -32,12 +32,12 @@ describe('translate', () => {
   });
 
   it('interpolates named parameters', () => {
-    expect(translate('ca', 'miniapp.hello', { name: 'Marta' })).toBe('Hola, Marta!');
-    expect(translate('es', 'miniapp.hello', { name: 'Marta' })).toBe('¡Hola, Marta!');
+    expect(translate('ca', 'bot.start.member', { name: 'Marta' })).toContain('Hola, Marta!');
+    expect(translate('es', 'bot.start.member', { name: 'Marta' })).toContain('¡Hola, Marta!');
   });
 
   it('leaves a placeholder alone when no parameter is given', () => {
-    expect(translate('ca', 'miniapp.hello')).toBe('Hola, {name}!');
+    expect(translate('ca', 'bot.start.member')).toContain('Hola, {name}!');
   });
 
   it('formats numbers per locale', () => {

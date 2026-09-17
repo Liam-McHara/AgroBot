@@ -17,6 +17,7 @@
   --agrobot-radius: 12px;
   /* PRD §12: touch targets of at least 44 px. */
   --agrobot-touch-target: 44px;
+  --agrobot-nav-height: 56px;
 
   color-scheme: light dark;
 }
@@ -51,4 +52,15 @@ button {
   color: var(--agrobot-button-text);
   font: inherit;
   cursor: pointer;
+}
+
+button.secondary {
+  background: var(--agrobot-secondary-bg);
+  color: var(--agrobot-link);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+button.danger {
+  background: var(--agrobot-destructive);
+  color: #fff;
 }
