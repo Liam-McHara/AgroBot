@@ -1,5 +1,4 @@
 {
-  "app.name": "AgroBot",
   "common.loading": "Carregant…",
   "common.retry": "Torna-ho a provar",
   "bot.start.placeholder": "Hola, {name}! Sóc l'AgroBot. Estic en obres: aviat podràs veure què ofereixen els altres membres del grup i reservar-ho des d'aquí.",

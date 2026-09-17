@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import type { ErrorBody, Health, Me } from '@agrobot/shared';
 import { members } from '../src/db/schema/index.js';
 import { signInitData } from '../src/http/init-data.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
@@ -20,6 +21,11 @@ function initDataFor(user: Record<string, unknown>, authDate = new Date()): stri
 
 const MARTA = { id: 5551, first_name: 'Marta', last_name: 'Puig', username: 'marta' };
 
+/** The API answers the contracts of `@agrobot/shared`; the tests read them as such. */
+async function bodyOf<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
 suite('HTTP API', () => {
   beforeEach(async () => {
     await resetDatabase(database!);
@@ -33,7 +39,7 @@ suite('HTTP API', () => {
     it('answers without credentials and without touching the database', async () => {
       const response = await testApp(database!).request('/health');
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await bodyOf<Health>(response);
       expect(body.status).toBe('ok');
       expect(body.version).toBeTypeOf('string');
       expect(body.commit).toBeTypeOf('string');
@@ -45,7 +51,7 @@ suite('HTTP API', () => {
     it('refuses a request without credentials, in the shape of ARCH §11', async () => {
       const response = await testApp(database!).request('/api/me');
       expect(response.status).toBe(401);
-      const body = await response.json();
+      const body = await bodyOf<ErrorBody>(response);
       expect(body.error.code).toBe('UNAUTHENTICATED');
       expect(body.error.message).toBe(
         "No hem pogut verificar qui ets. Torna a obrir l'AgroBot des del Telegram.",
@@ -77,7 +83,7 @@ suite('HTTP API', () => {
         headers: { authorization: `tma ${initDataFor(MARTA)}` },
       });
       expect(response.status).toBe(200);
-      const body = await response.json();
+      const body = await bodyOf<Me>(response);
       expect(body).toMatchObject({
         telegramId: '5551',
         username: 'marta',
@@ -99,7 +105,7 @@ suite('HTTP API', () => {
       });
 
       expect(response.status).toBe(200);
-      expect((await response.json()).username).toBe('marta_hort');
+      expect((await bodyOf<Me>(response)).username).toBe('marta_hort');
       const rows = await database!.db.select().from(members).where(eq(members.telegramId, 5551));
       expect(rows).toHaveLength(1);
       expect(rows[0]?.lastName).toBe('Puig i Roca');
@@ -113,7 +119,7 @@ suite('HTTP API', () => {
           authorization: `tma ${initDataFor({ id: 5552, first_name: 'Jordi', language_code: 'es' })}`,
         },
       });
-      expect((await response.json()).language).toBe('es');
+      expect((await bodyOf<Me>(response)).language).toBe('es');
     });
 
     it('accepts the dev bypass when it is configured (ARCH §4)', async () => {
@@ -122,7 +128,7 @@ suite('HTTP API', () => {
         headers: { authorization: 'dev 900000001' },
       });
       expect(response.status).toBe(200);
-      expect((await response.json()).displayName).toBe('Marta (dev)');
+      expect((await bodyOf<Me>(response)).displayName).toBe('Marta (dev)');
     });
 
     it('lets the dev bypass impersonate any seeded member (ARCH §14)', async () => {
@@ -130,7 +136,7 @@ suite('HTTP API', () => {
       const response = await app.request('/api/me', {
         headers: { authorization: 'dev 900000002' },
       });
-      expect((await response.json()).displayName).toBe('Jordi (dev)');
+      expect((await bodyOf<Me>(response)).displayName).toBe('Jordi (dev)');
     });
 
     it('ignores the dev bypass when it is not configured', async () => {
@@ -145,7 +151,7 @@ suite('HTTP API', () => {
     it('answer with the error envelope under /api', async () => {
       const response = await testApp(database!).request('/api/nope');
       expect(response.status).toBe(404);
-      expect((await response.json()).error.code).toBe('NOT_FOUND');
+      expect((await bodyOf<ErrorBody>(response)).error.code).toBe('NOT_FOUND');
     });
   });
 });

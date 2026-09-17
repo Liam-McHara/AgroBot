@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { DEFAULT_SETTINGS, UNIT_LIST } from '@agrobot/shared';
+import { DEFAULT_SETTINGS, UNIT_LIST, type MemberStatus } from '@agrobot/shared';
 import { members, settings, units } from '../src/db/schema/index.js';
 import { seed } from '../src/db/seed.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
@@ -56,8 +56,9 @@ suite('migrations and seed', () => {
       database!.db.insert(members).values({
         telegramId: 4242,
         displayName: 'Nobody',
-        // @ts-expect-error — deliberately outside MemberStatus; the database is the last guard.
-        status: 'banished',
+        // Deliberately outside MemberStatus: the database is the guard of last resort, and
+        // this asserts that the check constraint of the migration is really there.
+        status: 'banished' as MemberStatus,
       }),
     ).rejects.toThrow();
   });

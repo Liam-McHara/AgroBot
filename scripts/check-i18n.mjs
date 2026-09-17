@@ -131,6 +131,10 @@ for (const sourceRoot of sourceRoots) {
         mentioned.add(key);
       }
     }
+    // A whole family can be addressed at once, e.g. `error.${code}` in the error handler.
+    for (const match of contents.matchAll(/`([\w.-]+\.)\$\{/g)) {
+      for (const key of referenceKeys) if (key.startsWith(match[1])) mentioned.add(key);
+    }
     for (const match of contents.matchAll(usagePattern)) {
       const key = match[1];
       if (!key.includes('.')) continue; // not a message key, e.g. `test('works')`

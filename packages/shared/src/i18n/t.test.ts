@@ -12,7 +12,7 @@ describe('catalogues', () => {
   });
 
   it('recognises its own keys', () => {
-    expect(isMessageKey('app.name')).toBe(true);
+    expect(isMessageKey('common.loading')).toBe(true);
     expect(isMessageKey('nope.not.a.key')).toBe(false);
   });
 
