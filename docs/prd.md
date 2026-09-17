@@ -78,12 +78,20 @@ These are not features. Any feature that violates one needs an ADR.
 
 - Given the user is unknown, pressing *Start* creates them as *applicant*, replies in the
   language of their Telegram client (`ca` or `es`, default `ca`) that the request has been
-  sent, and notifies all admins with *Approve* / *Reject* quick actions.
+  sent, and notifies all admins with *Approve* / *Reject* quick actions. Opening the Mini App
+  directly (for example from a forwarded deep link) applies the same way: the applicant is
+  created, admins are notified once, and the app shows the "waiting" screen.
 - Given the user is already an applicant, *Start* repeats the "waiting" message; no new
   notification to admins.
 - Given the user's Telegram id or `@username` is in the pre-approved list (US-1.3) or in
   `ADMIN_TELEGRAM_IDS`, they are approved immediately (and made admin in the second case).
+  This also applies to an applicant who is still waiting when the list or the configuration
+  starts covering them. It never re-approves someone rejected or suspended: those decisions
+  belong to an admin (US-1.2, US-1.4).
 - Given the user is a member, *Start* shows the welcome message with an *Open AgroBot* button.
+- Given the user was rejected or is suspended, *Start* says so briefly and points to the
+  group's admins. `/help` (and any other text sent to the bot) explains that everything
+  happens in the Mini App.
 
 ### US-1.2 Approve or reject applicants
 **As** an admin **I** review applicants **so that** only farmers of the group get in.
@@ -98,11 +106,17 @@ These are not features. Any feature that violates one needs an ADR.
 **As** an admin **I** add `@username` or a Telegram id **so that** a known farmer is approved
 the moment they press *Start*.
 
+- Usernames are matched case-insensitively, with or without the `@`. Each pre-approval is
+  consumed by the first person it matches and is then shown as used.
+- If the person is already waiting as an applicant, adding them approves them at once (with
+  the welcome message, N2). If they are already a member, the addition is refused.
+
 ### US-1.4 Suspend, reinstate, promote
 **As** an admin **I** can suspend a member, reinstate them, or make them admin.
 - Suspending hides their offers from the board and blocks all their API calls with a
   "suspended" screen. Their open reservations stay visible to the counterpart, who can cancel.
-- An admin cannot suspend or demote themself if they are the last admin.
+- The last approved admin cannot be suspended or demoted, by themself or by anyone; the
+  group is never left without an admin. Promotion requires an approved member.
 
 ### US-1.5 Language and profile
 **As** a member **I** pick my language (`ca`/`es`) and my display name **so that** the app and

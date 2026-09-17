@@ -34,6 +34,7 @@ from a written specification; version 1.0 is frozen under `legacy/`.
 apps/server     Hono + grammY + Drizzle + jobs        packages/shared  zod contracts, enums, i18n
 apps/miniapp    Svelte 5 + Vite Telegram Mini App     docs/            the specification
 legacy/         AgroBot 1.0, frozen                   .github/         CI
+e2e/            Playwright suite against the built server
 ```
 Dependency rule: `miniapp` and `server` → `shared`. `domain/` inside the server imports no
 HTTP, bot or integration code.
@@ -51,14 +52,16 @@ pnpm lint                            # eslint + prettier --check + i18n catalogu
 pnpm typecheck                       # tsc across the workspace, svelte-check for the Mini App
 pnpm test                            # unit + integration (integration needs Postgres)
 pnpm build                           # shared, Mini App, server
+pnpm e2e                             # Playwright against the built server (run pnpm build first)
 
 pnpm db:generate                     # new migration after editing src/db/schema
 pnpm format                          # prettier --write
 ```
 
 Integration tests use `TEST_DATABASE_URL` (default `…/agrobot_test`). Without a reachable
-Postgres they skip with a warning locally and fail loudly in CI.
-Milestone M1 adds `pnpm e2e` (Playwright); it does not exist yet.
+Postgres they skip with a warning locally and fail loudly in CI. The e2e suite (`e2e/`) needs
+the same Postgres and a prior `pnpm build`; it boots the built server on `:8081` with the dev
+auth bypass and a reset database.
 
 ## Git
 

@@ -9,8 +9,9 @@ Mini App for the screens.
 ## Status
 
 **2.0 is under construction.** The specification lives in [`docs/`](docs/README.md) and is the
-source of truth. Milestone **M0 Foundation** is done: the workspace, database, bot and Mini App
-shell run, and CI is green. The features start at M1 in
+source of truth. Milestones **M0 Foundation** and **M1 Identity and membership** are done: the
+workspace runs, strangers apply with `/start`, admins approve from Telegram or the Mini App,
+and every screen speaks Catalan and Spanish. The next milestone is M2 in
 [docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under
 [`legacy/`](legacy/README.md).
 
@@ -69,10 +70,13 @@ pnpm lint          # eslint + prettier + the ca/es catalogue check
 pnpm typecheck
 pnpm test          # unit everywhere, integration against Postgres
 pnpm build
+pnpm e2e           # Playwright against the built server; needs pnpm build first
 ```
 
 Integration tests need Postgres at `TEST_DATABASE_URL` (default `…/agrobot_test`, created by
-`docker compose`). Without it they skip locally with a warning, and fail in CI.
+`docker compose`). Without it they skip locally with a warning, and fail in CI. The e2e suite
+uses the same database, resets it, and boots the built server on `:8081` with the dev auth
+bypass; the first run needs `pnpm exec playwright install chromium`.
 
 ## License
 
