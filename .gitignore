@@ -36,3 +36,6 @@ Thumbs.db
 # Legacy 1.0 (TypeScript compiled in place)
 legacy/**/*.js
 !legacy/netlify/functions/update.js
+
+# Mini App build copied next to the server for the container image (ARCH §15)
+apps/server/public/
