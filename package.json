@@ -11,8 +11,9 @@
   },
   "scripts": {
     "build": "pnpm -r build",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
     "build:shared": "pnpm --filter @agrobot/shared build",
-    "typecheck": "pnpm run build:shared && pnpm -r typecheck",
+    "typecheck": "pnpm run build:shared && pnpm -r typecheck && tsc -p e2e/tsconfig.json",
     "test": "pnpm run build:shared && pnpm -r test",
     "lint": "eslint . && prettier --check . && pnpm run i18n:check",
     "format": "prettier --write .",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.56.1",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.23.0",
@@ -33,7 +35,8 @@
     "svelte": "^5.57.0",
     "svelte-eslint-parser": "^1.8.1",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.70.0",
+    "@types/node": "^22.18.0"
   },
   "pnpm": {
     "overrides": {
