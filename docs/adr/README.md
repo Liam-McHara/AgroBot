@@ -16,6 +16,9 @@ edited after acceptance except to change the status (e.g. *Superseded by ADR-00x
 | [0009](0009-notification-outbox-and-sse.md) | Transactional notification outbox and SSE for realtime | Accepted |
 | [0010](0010-auth-via-telegram-initdata.md) | Authentication via Telegram `initData`, no own accounts | Accepted |
 | [0011](0011-defer-history-keep-snapshots.md) | Defer history/reporting but snapshot prices and keep records | Accepted |
+| [0012](0012-hosting-on-railway.md) | Host the service and Postgres on Railway | Accepted |
+| [0013](0013-reuse-the-1-0-bot-identity.md) | Reuse AgroBot 1.0's bot token and username | Accepted |
+| [0014](0014-confirm-and-deliver-shortcut.md) | Confirm-and-deliver as one Mini App action | Accepted |
 
 ## Template
 

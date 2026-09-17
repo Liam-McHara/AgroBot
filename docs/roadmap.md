@@ -30,7 +30,7 @@ done are the commitment.
 **Goal.** A developer (or a fresh Claude Code session) can clone, run `pnpm dev`, get a
 running server with a migrated database and a blank Mini App, and CI is green.
 
-**Spec.** ARCH §2, §3, §13–§16 · ADR-0002, 0006, 0008.
+**Spec.** ARCH §2, §3, §13–§16 · ADR-0002, 0006, 0008, 0012 (Railway), 0013 (bot identity).
 
 **Tasks**
 - [ ] Root `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json` (strict), ESLint flat
@@ -47,7 +47,7 @@ running server with a migrated database and a blank Mini App, and CI is green.
 - [ ] `apps/miniapp`: Svelte 5 + Vite, Telegram SDK init, theme variables, router with a single
       "Hello, {name}" screen calling `GET /api/me`; `tma` auth header; dev auth bypass.
 - [ ] `docker-compose.yml` (Postgres 16), `.env.example` documenting every variable of ARCH §13.
-- [ ] `Dockerfile` multi-stage; `fly.toml` (or provider file decided in PRD Q3); migrations on boot.
+- [ ] `Dockerfile` multi-stage; `railway.json` (ADR-0012); migrations on boot.
 - [ ] `.github/workflows/ci.yml`: lint, typecheck, unit, integration (Postgres service), build.
 - [ ] Update `CLAUDE.md` with the real commands; README "Getting started" section.
 - [ ] Exclude `legacy/` from every tool (tsconfig, eslint, vitest, prettier).
@@ -166,7 +166,7 @@ products; admins see sync health.
 **Goal.** Reserving holds quantity atomically and every reservation goes through confirm,
 deliver, cancel, reject or expire, with both parties informed.
 
-**Spec.** PRD §8 US-4.1–4.6, N6–N8 · ARCH §5 (reservations), §6 reservation machine, §9, §11 · ADR-0004.
+**Spec.** PRD §8 US-4.1–4.6, N6–N8 · ARCH §5 (reservations), §6 reservation machine, §9, §11 · ADR-0004, 0014.
 
 **Tasks**
 - [ ] `domain/reservations`: create with `SELECT … FOR UPDATE` on the offer, availability check,
@@ -177,6 +177,8 @@ deliver, cancel, reject or expire, with both parties informed.
       others get `INSUFFICIENT_AVAILABILITY {available}`.
 - [ ] Jobs `reservations.remind` and `reservations.expire`; N7, N8; tests with fake clock.
 - [ ] Quick actions `confirm:<id>` / `reject:<id>` from N6/N7 with stale-button handling.
+- [ ] `confirm-and-deliver` (producer, pending, one transaction, both system lines, one N8) in the
+      domain and as a Mini App action only — never a quick action (ADR-0014).
 - [ ] System messages on every transition (thread table exists; rendering comes in M5).
 - [ ] API: `POST /reservations`, list by side/state, detail, four action endpoints; SSE
       `reservation.changed`.
@@ -189,6 +191,8 @@ deliver, cancel, reject or expire, with both parties informed.
 **Definition of done**
 - E2E: requester reserves → producer sees N6 and confirms from the quick action → requester
   sees status live → producer marks delivered → offer quantity reduced accordingly.
+- E2E: a second reservation goes pending → delivered through the Mini App's *confirm and deliver*,
+  leaving the same records as the two-step path and one delivered notification.
 - Pending reservation with a 1-minute expiry (test setting) gets reminded and expired by the
   jobs, quantity released, both notified.
 - Withdrawing an offer with open reservations keeps them actionable and sends N11.
@@ -224,7 +228,7 @@ deliver, cancel, reject or expire, with both parties informed.
 
 **Goal.** The group uses AgroBot 2.0 for real.
 
-**Spec.** PRD §10, §12, §13 · ARCH §15, §17 · ADR-0008 (deletion task).
+**Spec.** PRD §10, §12, §13 · ARCH §15, §17 · ADR-0008 (deletion task), 0012, 0013 (cutover).
 
 **Tasks**
 - [ ] Admin → Settings screen with validation per key; settings read by jobs and domain at run
@@ -233,13 +237,16 @@ deliver, cancel, reject or expire, with both parties informed.
       report in CI, dependency review.
 - [ ] Sentry hook (optional by env), `/status` complete, structured error ids surfaced in toasts.
 - [ ] Full Playwright suite in CI (M1–M5 scenarios), flaky-test policy documented.
-- [ ] Production deploy: provider account, Postgres, secrets, webhook registration, Mini App URL in
-      @BotFather, custom domain if any; backups verified by a restore drill; runbook in
+- [ ] Production deploy: Railway project and Postgres (ADR-0012), secrets, Mini App short name on
+      the 1.0 bot, custom domain if any; backups verified by a restore drill; runbook in
       `docs/runbook.md` (deploy, rollback, rotate bot token, re-sync catalogue, unstick a
       notification).
-- [ ] Pilot with the group: onboarding message, sheet prepared (PRD Q1), admins bootstrapped,
-      one week of feedback triage into GitHub issues.
-- [ ] Resolve PRD §13 open questions in the docs (edit PRD/ADRs, do not leave them stale).
+- [ ] Bot cutover (ADR-0013): stop 1.0, then register the 2.0 webhook on the same token — the two
+      can never run at once. Rollback is re-pointing the webhook at 1.0; rehearse it.
+- [ ] Pilot with the group: onboarding message, `Productes` tab prepared and shared with the
+      service account (PRD §6), admins bootstrapped, one week of feedback triage into GitHub
+      issues.
+- [x] Resolve PRD §13 open questions in the docs (edit PRD/ADRs, do not leave them stale).
 - [ ] After a stable week: tag `v1-legacy`, delete `legacy/`, tag `v2.0.0`.
 
 **Definition of done**
@@ -258,7 +265,6 @@ picked up.
 2. Settlement view and CSV export for admins.
 3. Daily digest mode for new-offer notifications.
 4. Photos on offers.
-5. One-tap "confirm and deliver" for face-to-face handovers (PRD Q6).
-6. Auto-expire stale offers after prolonged silence.
-7. Multiple offers of the same product per producer.
-8. Several groups per deployment.
+5. Auto-expire stale offers after prolonged silence.
+6. Multiple offers of the same product per producer.
+7. Several groups per deployment.
