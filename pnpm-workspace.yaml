@@ -3,3 +3,8 @@ packages:
   - 'packages/*'
 
 # legacy/ is AgroBot 1.0 and is deliberately not a workspace member (ADR-0008).
+
+# esbuild ships a platform binary that its install script links into place; tsx, Vite and
+# Vitest all fail without it. Nothing else in the tree needs to run install scripts.
+onlyBuiltDependencies:
+  - esbuild
