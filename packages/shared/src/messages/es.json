@@ -93,7 +93,8 @@
   "error.CATALOG_SYNC_FAILED": "No se ha podido leer la hoja de productos.",
   "error.RATE_LIMITED": "Vas demasiado rápido. Espera un momento.",
   "error.INTERNAL": "Ha habido un error. Si quieres reportarlo, la referencia es {requestId}.",
-  "bot.start.placeholder": "¡Hola, {name}! Soy AgroBot. Estoy en obras: pronto podrás ver qué ofrecen los otros miembros del grupo y reservarlo desde aquí.",
   "miniapp.hello": "¡Hola, {name}!",
-  "miniapp.hello.subtitle": "AgroBot 2.0 se está construyendo. Esta pantalla solo comprueba que la aplicación y el servidor se hablan."
+  "miniapp.hello.subtitle": "AgroBot 2.0 se está construyendo. Esta pantalla solo comprueba que la aplicación y el servidor se hablan.",
+  "bot.command.start": "Comprueba tu acceso y abre la aplicación",
+  "bot.command.help": "Qué es AgroBot y cómo funciona"
 }
