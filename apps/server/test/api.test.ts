@@ -41,7 +41,8 @@ suite('HTTP API', () => {
       expect(response.status).toBe(200);
       const body = await bodyOf<Health>(response);
       expect(body.status).toBe('ok');
-      expect(body.version).toBeTypeOf('string');
+      // Not the '0.0.0-unknown' fallback: the version really comes from package.json.
+      expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
       expect(body.commit).toBeTypeOf('string');
       expect(response.headers.get('x-request-id')).toBeTruthy();
     });

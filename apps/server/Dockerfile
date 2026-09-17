@@ -24,11 +24,6 @@ COPY packages/shared packages/shared
 COPY apps/server apps/server
 COPY apps/miniapp apps/miniapp
 
-ARG APP_VERSION=2.0.0-alpha.0
-ARG GIT_COMMIT=unknown
-ENV APP_VERSION=$APP_VERSION
-ENV GIT_COMMIT=$GIT_COMMIT
-
 RUN pnpm --filter @agrobot/shared build \
   && pnpm --filter @agrobot/miniapp build \
   && pnpm --filter @agrobot/server build
@@ -42,6 +37,10 @@ RUN pnpm --filter @agrobot/server --prod deploy --legacy /runtime
 
 # ── Stage 3: runtime ──────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
+
+# The version comes from the deployed package.json; only the commit has to be baked in.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV TZ=Europe/Madrid
