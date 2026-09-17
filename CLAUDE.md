@@ -55,9 +55,30 @@ pnpm e2e                             # Playwright
 
 ## Git
 
-- Branch per milestone or task (`m0-foundation`, `m3-board-search`). Small commits, imperative
-  subject, body explains why, references `US-x.y` / `N<n>` / `ADR-00NN` where relevant.
-- A PR that completes roadmap tasks checks their boxes in `docs/roadmap.md`.
+- Branch per milestone or task (`m0-foundation`, `m3-board-search`).
+- **Commits follow [Conventional Commits](https://www.conventionalcommits.org) 1.0.0:**
+  `<type>(<scope>): <subject>`, imperative and lower-case, no trailing period, ≤72 characters.
+- Types: `feat` · `fix` · `docs` · `refactor` · `test` · `build` · `ci` · `chore` · `perf` ·
+  `style` · `revert`. Anything user-visible is `feat` or `fix`; spec edits are `docs`.
+- Scopes are the workspace or area touched: `server`, `miniapp`, `shared`, `db`, `bot`, `api`,
+  `domain`, `jobs`, `i18n`, `docs`, `ci`. Omit the scope only for repo-wide changes.
+- Body (wrapped at ~100 columns) explains **why**, not what. Reference `US-x.y` / `N<n>` /
+  `ADR-00NN` there, and close roadmap tasks with a `Refs:` footer.
+- Breaking changes: `!` after the scope **and** a `BREAKING CHANGE:` footer explaining the
+  migration — API contracts, message keys, and DB schema all count.
+- Small commits: one logical change each, tests in the same commit as the code they cover.
+- PR titles use the same format; a PR that completes roadmap tasks checks their boxes in
+  `docs/roadmap.md`.
+
+```
+feat(domain): derive offer availability from confirmed reservations
+
+Storing `available` drifted whenever a reservation expired outside the request that
+created it. Deriving it inside the locking transaction keeps the two in step.
+
+Refs: US-2.3, ADR-0004
+```
+
 - Never force-push shared branches. Never commit `.env` or service-account keys.
 
 ## Domain vocabulary (use these words, in English, in code)
