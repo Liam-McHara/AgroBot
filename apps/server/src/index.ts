@@ -5,6 +5,7 @@ import { createLogger } from './logger.js';
 import { createDatabase } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { createApp } from './http/app.js';
+import { createMembersService } from './domain/members/service.js';
 import { createBot, WEBHOOK_PATH } from './bot/index.js';
 import { APP_VERSION, GIT_COMMIT } from './version.js';
 
@@ -29,7 +30,11 @@ async function main(): Promise<void> {
 
   const logger = createLogger(env);
   const database = createDatabase(env.DATABASE_URL);
-  const deps = { db: database.db, env, logger };
+  const members = createMembersService({
+    db: database.db,
+    adminTelegramIds: env.ADMIN_TELEGRAM_IDS,
+  });
+  const deps = { db: database.db, env, logger, members };
 
   logger.info({ version: APP_VERSION, commit: GIT_COMMIT, mode: env.BOT_MODE }, 'starting');
 

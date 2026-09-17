@@ -1,7 +1,6 @@
 import { Bot, type Context } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { createTranslator, languageFromTelegram, type Language } from '@agrobot/shared';
-import { upsertMember } from '../http/middleware/auth.js';
 import type { AppDeps } from '../http/context.js';
 import { escapeHtml } from './html.js';
 
@@ -28,7 +27,7 @@ export function createBot(deps: AppDeps): Bot {
     let name = from.first_name || from.username || '';
 
     try {
-      const member = await upsertMember(deps, {
+      const { member } = await deps.members.identify({
         id: from.id,
         username: from.username ?? null,
         firstName: from.first_name ?? null,

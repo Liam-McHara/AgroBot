@@ -271,7 +271,7 @@ export function createMembersService(deps: MembersServiceDeps) {
   /** US-1.5: language and display name are the member's to change. */
   async function updateProfile(
     member: Member,
-    patch: { language?: Member['language']; displayName?: string },
+    patch: { language?: Member['language'] | undefined; displayName?: string | undefined },
   ): Promise<Member> {
     assertMember(member);
     const [updated] = await deps.db
