@@ -81,7 +81,7 @@ an interface (§7).
 ├── railway.json                # deploy configuration (ADR-0012)
 ├── .github/workflows/ci.yml
 ├── package.json, pnpm-workspace.yaml, tsconfig.base.json, eslint.config.js
-└── CLAUDE.md, README.md, .env.example
+└── AGENTS.md, README.md, .env.example
 ```
 
 Rules of dependency: `miniapp` and `server` depend on `shared`; nothing depends on `legacy`.

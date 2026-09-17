@@ -54,7 +54,7 @@ pnpm lint                            # eslint + prettier --check + i18n catalogu
 pnpm typecheck                       # tsc across the workspace, svelte-check for the Mini App
 pnpm test                            # unit + integration (integration needs Postgres)
 pnpm build                           # shared, Mini App, server
-pnpm e2e                             # Playwright against the built server (run pnpm build first)
+pnpm e2e                             # Playwright membership + catalogue (run pnpm build first)
 
 pnpm db:generate                     # new migration after editing src/db/schema
 pnpm format                          # prettier --write
@@ -64,6 +64,12 @@ Integration tests use `TEST_DATABASE_URL` (default `…/agrobot_test`). Without 
 Postgres they skip with a warning locally and fail loudly in CI. The e2e suite (`e2e/`) needs
 the same Postgres and a prior `pnpm build`; it boots the built server on `:8081` with the dev
 auth bypass and a reset database.
+
+Catalogue development: configure `CATALOG_SOURCE=sheets` with the service-account variables,
+or `CATALOG_SOURCE=csv` with `CATALOG_CSV_URL` (see README). Sync runs hourly and once on boot
+if never attempted; admins can use `/sync`, `/status`, or Admin → Catalogue → Sync now.
+Focused catalogue integration checks: `pnpm --filter @agrobot/server exec vitest run test/catalog.test.ts`.
+They use fixture sources; no Google credentials or real Telegram bot are needed.
 
 ## Git
 

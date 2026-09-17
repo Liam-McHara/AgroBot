@@ -99,7 +99,7 @@ screen speaks the member's language.
 **Goal.** Products, units and prices come from the group's sheet; farmers can propose missing
 products; admins see sync health.
 
-**Spec.** PRD §6, US-2.1–2.2, N4, N5, N12 · ARCH §10, §11 (products, admin/catalog) · ADR-0003.
+**Spec.** PRD §6, US-2.1–2.2, N4, N5, N12 · ARCH §10, §11 (products, admin/catalog) · ADR-0003, 0015.
 
 **Tasks**
 - [x] `integrations/google-sheets.ts` (service account) and `csv-catalog.ts` behind one
@@ -125,6 +125,11 @@ products; admins see sync health.
   rest is applied; an empty sheet is rejected and admins notified.
 - A member proposes "tomàquet cor de bou", admins are notified, adding the row to the sheet
   resolves it on the next sync (integration test with the CSV source).
+
+**Verified in M2:** CSV integration against real Postgres and a built-app Playwright flow
+cover both acceptance scenarios. The Sheets adapter is tested with a mocked API; live Google
+access uses deployment credentials. `pnpm lint`, `pnpm typecheck`, `pnpm test` (256 tests) and
+`pnpm build` pass; `pnpm e2e` passes all four flows, including M1 regressions.
 
 ---
 
