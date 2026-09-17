@@ -62,8 +62,6 @@ jobs:
     name: dependency audit (report only)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # ARCH §17: a report, not a gate — a transitive advisory must not block a fix.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -72,4 +70,24 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level moderate
+
+      - name: Report known advisories
+        # ARCH §17: a report, not a gate — an advisory in a transitive dependency must not
+        # stand between a fix and `main`, so the failure is contained to this step and the
+        # job still passes. The findings land in the run summary, where they get read.
+        # Acting on them is M6's "dependency review" task.
+        continue-on-error: true
+        shell: bash
+        run: |
+          {
+            echo '## `pnpm audit`'
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # `shell: bash` runs with -eo pipefail, which would abort before the fence below.
+          set +e
+          pnpm audit --audit-level moderate | tee -a "$GITHUB_STEP_SUMMARY"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
