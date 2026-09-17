@@ -5,7 +5,9 @@
  * auth bypass enabled and a throwaway bot token. Telegram is unreachable here on purpose: the
  * bot's polling and the notification dispatcher log and retry, nothing else depends on them.
  */
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,6 +35,19 @@ const databaseUrl =
   process.env['TEST_DATABASE_URL'] ??
   'postgres://agrobot:agrobot@localhost:5432/agrobot_test';
 
+// Exercise the real CSV adapter without depending on a network service or live secrets.
+const catalogFixture = join(
+  tmpdir(),
+  `agrobot-e2e-catalog-${process.env['E2E_PORT'] ?? '8081'}.csv`,
+);
+writeFileSync(catalogFixture, 'Producte,Unitat,Preu\nOus,dotzena,3.10\n');
+const catalogServer = createServer((_request, response) => {
+  response.setHeader('content-type', 'text/csv');
+  response.end(readFileSync(catalogFixture, 'utf8'));
+});
+await new Promise((resolve) => catalogServer.listen(0, '127.0.0.1', resolve));
+const catalogPort = catalogServer.address().port;
+
 Object.assign(process.env, {
   SKIP_DOTENV: '1',
   NODE_ENV: 'test',
@@ -43,7 +58,7 @@ Object.assign(process.env, {
   DATABASE_URL: databaseUrl,
   ADMIN_TELEGRAM_IDS: process.env['E2E_ADMIN_TELEGRAM_ID'] ?? '900000100',
   CATALOG_SOURCE: 'csv',
-  CATALOG_CSV_URL: 'https://example.test/catalog.csv',
+  CATALOG_CSV_URL: `http://127.0.0.1:${catalogPort}`,
   DEV_AUTH_BYPASS_TELEGRAM_ID: '900000001',
   PORT: process.env['E2E_PORT'] ?? '8081',
   LOG_LEVEL: process.env['E2E_LOG_LEVEL'] ?? 'warn',
