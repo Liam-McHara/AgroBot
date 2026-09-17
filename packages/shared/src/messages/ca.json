@@ -93,8 +93,6 @@
   "error.CATALOG_SYNC_FAILED": "No s'ha pogut llegir el full de productes.",
   "error.RATE_LIMITED": "Vas massa de pressa. Espera un moment.",
   "error.INTERNAL": "Hi ha hagut un error. Si el vols reportar, la referència és {requestId}.",
-  "miniapp.hello": "Hola, {name}!",
-  "miniapp.hello.subtitle": "L'AgroBot 2.0 s'està construint. Aquesta pantalla només comprova que l'aplicació i el servidor es parlen.",
   "bot.command.start": "Comprova el teu accés i obre l'aplicació",
   "bot.command.help": "Què és l'AgroBot i com funciona"
 }

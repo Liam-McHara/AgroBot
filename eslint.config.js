@@ -87,7 +87,8 @@ export default tseslint.config(
   },
   {
     files: ['apps/miniapp/**/*.{ts,svelte}'],
-    languageOptions: { globals: { ...globals.browser } },
+    // `__APP_VERSION__` is injected by Vite from package.json (apps/miniapp/vite.config.ts).
+    languageOptions: { globals: { ...globals.browser, __APP_VERSION__: 'readonly' } },
   },
 
   prettier,

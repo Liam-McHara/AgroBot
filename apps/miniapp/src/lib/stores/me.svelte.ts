@@ -1,5 +1,6 @@
-import type { Me } from '@agrobot/shared';
-import { apiFetch, type ApiError } from '../api/client.js';
+import type { Me, UpdateMe } from '@agrobot/shared';
+import { fetchMe, updateMe } from '../api/members.js';
+import type { ApiError } from '../api/client.js';
 import { setLanguage } from '../i18n/index.svelte.js';
 
 /**
@@ -11,19 +12,42 @@ class MeStore {
   loading = $state(false);
   error = $state<ApiError | Error | null>(null);
 
+  get isApproved(): boolean {
+    return this.me?.status === 'approved';
+  }
+
+  get isAdmin(): boolean {
+    return this.isApproved && this.me?.role === 'admin';
+  }
+
   async refetch(): Promise<void> {
-    this.loading = true;
+    this.loading = this.me === null;
     this.error = null;
     try {
-      const me = await apiFetch<Me>('/me');
-      this.me = me;
-      setLanguage(me.language);
+      this.apply(await fetchMe());
     } catch (error) {
       this.error = error instanceof Error ? error : new Error(String(error));
-      this.me = null;
+      if (this.me === null) this.me = null;
     } finally {
       this.loading = false;
     }
+  }
+
+  /** PRD US-1.5. The language switches before the request so the screen re-renders at once. */
+  async update(patch: UpdateMe): Promise<void> {
+    const previous = this.me;
+    if (patch.language) setLanguage(patch.language);
+    try {
+      this.apply(await updateMe(patch));
+    } catch (error) {
+      if (previous) this.apply(previous);
+      throw error;
+    }
+  }
+
+  private apply(me: Me): void {
+    this.me = me;
+    setLanguage(me.language);
   }
 }
 
