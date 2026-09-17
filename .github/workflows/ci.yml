@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The suite needs a real Postgres (ARCH §16); the service below is it.
+  TEST_DATABASE_URL: postgres://agrobot:agrobot@localhost:5432/agrobot_test
+
+jobs:
+  check:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agrobot
+          POSTGRES_PASSWORD: agrobot
+          POSTGRES_DB: agrobot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agrobot -d agrobot_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint and check the message catalogues
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test (unit and integration against Postgres)
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  audit:
+    name: dependency audit (report only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # ARCH §17: a report, not a gate — a transitive advisory must not block a fix.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level moderate
