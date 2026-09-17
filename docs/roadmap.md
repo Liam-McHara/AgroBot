@@ -33,24 +33,24 @@ running server with a migrated database and a blank Mini App, and CI is green.
 **Spec.** ARCH §2, §3, §13–§16 · ADR-0002, 0006, 0008, 0012 (Railway), 0013 (bot identity).
 
 **Tasks**
-- [ ] Root `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json` (strict), ESLint flat
+- [x] Root `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json` (strict), ESLint flat
       config (ts + svelte), Prettier, `.editorconfig`, `.nvmrc`/`engines` (Node 22).
-- [ ] `packages/shared`: skeleton with `enums.ts` (all statuses, unit codes, error codes,
+- [x] `packages/shared`: skeleton with `enums.ts` (all statuses, unit codes, error codes,
       notification kinds from PRD/ARCH), `messages/ca.json` + `es.json` with the first keys,
       `t()` helper with plural/number/date support and unit tests, i18n parity check script.
-- [ ] `apps/server`: Hono app with `/health`, pino logging + request ids, `env.ts` (zod),
+- [x] `apps/server`: Hono app with `/health`, pino logging + request ids, `env.ts` (zod),
       Drizzle client, schema for **all tables in ARCH §5** and the initial migration, seed
       script (units, default settings, dev members), `migrate` and `seed` scripts, graceful
       shutdown.
-- [ ] `apps/server`: grammY bot wired for both `polling` and `webhook` modes; `/start` replies
+- [x] `apps/server`: grammY bot wired for both `polling` and `webhook` modes; `/start` replies
       with a placeholder in the user's language; webhook registered on boot with secret.
-- [ ] `apps/miniapp`: Svelte 5 + Vite, Telegram SDK init, theme variables, router with a single
+- [x] `apps/miniapp`: Svelte 5 + Vite, Telegram SDK init, theme variables, router with a single
       "Hello, {name}" screen calling `GET /api/me`; `tma` auth header; dev auth bypass.
-- [ ] `docker-compose.yml` (Postgres 16), `.env.example` documenting every variable of ARCH §13.
-- [ ] `Dockerfile` multi-stage; `railway.json` (ADR-0012); migrations on boot.
-- [ ] `.github/workflows/ci.yml`: lint, typecheck, unit, integration (Postgres service), build.
-- [ ] Update `CLAUDE.md` with the real commands; README "Getting started" section.
-- [ ] Exclude `legacy/` from every tool (tsconfig, eslint, vitest, prettier).
+- [x] `docker-compose.yml` (Postgres 16), `.env.example` documenting every variable of ARCH §13.
+- [x] `Dockerfile` multi-stage; `railway.json` (ADR-0012); migrations on boot.
+- [x] `.github/workflows/ci.yml`: lint, typecheck, unit, integration (Postgres service), build.
+- [x] Update `CLAUDE.md` with the real commands; README "Getting started" section.
+- [x] Exclude `legacy/` from every tool (tsconfig, eslint, vitest, prettier).
 
 **Definition of done**
 - `pnpm install && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm dev` works

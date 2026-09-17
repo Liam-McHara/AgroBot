@@ -40,18 +40,25 @@ HTTP, bot or integration code.
 
 ## Commands
 
-Until M0 lands there is nothing to run at the root. M0 must replace this block with the real
-commands; the intended set is:
-
 ```bash
 pnpm install
-docker compose up -d                 # local Postgres
+docker compose up -d                 # Postgres 16 on 5432 (also creates agrobot_test)
 cp .env.example .env                 # then fill BOT_TOKEN etc.
-pnpm db:migrate && pnpm db:seed
-pnpm dev                             # server (polling bot) + Mini App
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
-pnpm e2e                             # Playwright
+pnpm db:migrate && pnpm db:seed      # schema, then units, settings and dev members
+pnpm dev                             # server (polling bot, :8080) + Mini App (:5173)
+
+pnpm lint                            # eslint + prettier --check + i18n catalogue check
+pnpm typecheck                       # tsc across the workspace, svelte-check for the Mini App
+pnpm test                            # unit + integration (integration needs Postgres)
+pnpm build                           # shared, Mini App, server
+
+pnpm db:generate                     # new migration after editing src/db/schema
+pnpm format                          # prettier --write
 ```
+
+Integration tests use `TEST_DATABASE_URL` (default `…/agrobot_test`). Without a reachable
+Postgres they skip with a warning locally and fail loudly in CI.
+Milestone M1 adds `pnpm e2e` (Playwright); it does not exist yet.
 
 ## Git
 

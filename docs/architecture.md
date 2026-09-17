@@ -57,24 +57,29 @@ an interface (§7).
 │   │   ├── test/               # integration tests (real Postgres)
 │   │   └── Dockerfile
 │   └── miniapp/                # Svelte 5 + Vite, Telegram Mini App SDK
+│       ├── index.html          # Vite entry point (plain SPA, not SvelteKit)
 │       └── src/
+│           ├── main.ts         # mounts App.svelte, initialises Telegram and i18n
 │           ├── lib/api/        # typed client generated from shared contracts
 │           ├── lib/i18n/
 │           ├── lib/stores/     # me, board, reservations, sse
-│           ├── routes/         # board, offers, reservations, thread, settings, admin, gate
-│           └── app.html
+│           ├── lib/telegram.ts # SDK init, initData, theme variables
+│           └── routes/         # board, offers, reservations, thread, settings, admin, gate
 ├── packages/
 │   └── shared/                 # zod schemas (API contracts), domain enums, i18n messages
 │       └── src/
 │           ├── contracts/      # request/response schemas per endpoint
 │           ├── enums.ts        # statuses, units, notification kinds, error codes
+│           ├── i18n/           # t() with plural/number/date formatting
 │           └── messages/       # ca.json, es.json (+ typed keys)
 ├── docs/                       # this specification
 ├── legacy/                     # AgroBot 1.0, frozen
+├── scripts/                    # workspace scripts (i18n catalogue check, Postgres init)
 ├── docker-compose.yml          # local Postgres
+├── railway.json                # deploy configuration (ADR-0012)
 ├── .github/workflows/ci.yml
 ├── package.json, pnpm-workspace.yaml, tsconfig.base.json, eslint.config.js
-└── CLAUDE.md, README.md
+└── CLAUDE.md, README.md, .env.example
 ```
 
 Rules of dependency: `miniapp` and `server` depend on `shared`; nothing depends on `legacy`.
@@ -97,7 +102,7 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
 | Logging | `pino` | JSON logs, request id middleware. |
 | Tests | **Vitest** (unit + integration), **Playwright** (e2e), `@testing-library/svelte` | Integration tests run against the docker-compose Postgres (CI: service container). |
 | Lint/format | ESLint (typescript-eslint, svelte plugin) + Prettier | `pnpm lint`, `pnpm format:check` in CI. |
-| Package manager | pnpm 9 | Workspaces, `pnpm -r` scripts. |
+| Package manager | pnpm 10 | Workspaces, `pnpm -r` scripts; the version is pinned in `packageManager`. |
 
 ## 4. Authentication and authorization
 
@@ -309,7 +314,7 @@ fetchRows()  ──►  normalizeHeaders()  ──►  parseRow() ×N  ──►
   writes, no notification.
 - Zero valid rows → `failed`, nothing applied, N12 to admins.
 - Sheets mode: `GOOGLE_SERVICE_ACCOUNT_JSON` (base64 of the key file), `GOOGLE_SHEET_ID`,
-  `GOOGLE_SHEET_RANGE` (default `Productes!A:F`). The sheet must be shared read-only with the
+  `GOOGLE_SHEET_RANGE` (default `Productes!A:E`). The sheet must be shared read-only with the
   service account email. CSV mode: `CATALOG_CSV_URL` of a "publish to web → CSV" link.
 
 ## 11. API
