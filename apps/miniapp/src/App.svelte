@@ -11,6 +11,7 @@
   import Offers from './routes/Offers.svelte';
   import Reservations from './routes/Reservations.svelte';
   import Settings from './routes/Settings.svelte';
+  import AdminCatalog from './routes/admin/Catalog.svelte';
   import AdminMembers from './routes/admin/Members.svelte';
 
   /**
@@ -23,7 +24,7 @@
     '/offers': Offers,
     '/reservations': Reservations,
     '/settings': Settings,
-    ...(meStore.isAdmin ? { '/admin/members': AdminMembers } : {}),
+    ...(meStore.isAdmin ? { '/admin/members': AdminMembers, '/admin/catalog': AdminCatalog } : {}),
     '*': Board,
   });
 

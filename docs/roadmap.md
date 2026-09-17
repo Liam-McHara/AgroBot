@@ -114,7 +114,7 @@ products; admins see sync health.
 - [x] Proposals: `POST /products/proposals`, N4 to admins with the exact name; admin
       `rename` / `reject` (reject cascades are stubs until offers exist in M3, then completed).
 - [x] API `GET /products` (search, includes my pending), `GET /admin/catalog`.
-- [ ] Mini App: product picker component (search, "Propose «…»" with unit choice), Admin →
+- [x] Mini App: product picker component (search, "Propose «…»" with unit choice), Admin →
       Catalogue (last sync, errors table, product list with status filters, pending products
       with rename/reject and copy-to-clipboard name, link to the sheet).
 - [x] N12 on failed sync.

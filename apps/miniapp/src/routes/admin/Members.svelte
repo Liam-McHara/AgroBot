@@ -6,6 +6,7 @@
     type Invite,
     type MemberAction,
   } from '@agrobot/shared';
+  import AdminNav from '../../lib/components/AdminNav.svelte';
   import Screen from '../../lib/components/Screen.svelte';
   import { t } from '../../lib/i18n/index.svelte.js';
   import { meStore } from '../../lib/stores/me.svelte.js';
@@ -131,6 +132,7 @@
 </script>
 
 <Screen title={t('admin.members.title')}>
+  <AdminNav />
   <div class="tabs" role="tablist">
     {#each TABS as candidate (candidate)}
       <button
