@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { InlineKeyboardMarkup, Update, UserFromGetMe } from 'grammy/types';
 import { eq } from 'drizzle-orm';
 import { members, notifications } from '../src/db/schema/index.js';
+import { createCatalogService } from '../src/domain/catalog/service.js';
 import { createBot } from '../src/bot/index.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 import { testDeps } from './helpers/app.js';
@@ -38,7 +39,21 @@ interface SentCall {
  */
 function botUnderTest() {
   const sent: SentCall[] = [];
-  const bot = createBot(testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) }));
+  const deps = testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) });
+  const bot = createBot({
+    ...deps,
+    catalog: createCatalogService({
+      db: database!.db,
+      source: {
+        kind: 'csv',
+        sheetUrl: 'https://example.test/catalog.csv',
+        fetchRows: async () => [
+          ['Product', 'Unit', 'Price'],
+          ['Tomàquet', 'kg', '2.35'],
+        ],
+      },
+    }),
+  });
   bot.botInfo = BOT_INFO;
   bot.api.config.use(async (_prev, method, payload) => {
     sent.push({ method, payload: payload as Record<string, unknown> });
@@ -116,6 +131,18 @@ suite('bot', () => {
 
   afterAll(async () => {
     await database?.close();
+  });
+
+  it('limits /sync and /status to admins and replies with real catalogue counts', async () => {
+    const { bot, last } = botUnderTest();
+    await bot.handleUpdate(textUpdate(MARTA, '/sync'));
+    expect(last('sendMessage')?.payload['text']).toContain('encara no està aprovat');
+    await bot.handleUpdate(textUpdate(ADMIN, '/status'));
+    expect(last('sendMessage')?.payload['text']).toContain('Encara no s’ha sincronitzat');
+    await bot.handleUpdate(textUpdate(ADMIN, '/sync'));
+    expect(last('sendMessage')?.payload['text']).toContain('Creats: 1');
+    await bot.handleUpdate(textUpdate(ADMIN, '/status'));
+    expect(last('sendMessage')?.payload['text']).toContain('Última sincronització');
   });
 
   describe('/start (PRD US-1.1)', () => {

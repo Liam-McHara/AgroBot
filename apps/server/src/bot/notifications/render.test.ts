@@ -49,3 +49,44 @@ describe('N2 renderer (PRD N2)', () => {
     expect(rendered.replyMarkup).toBeUndefined();
   });
 });
+
+describe('catalogue notifications (N4, N5, N12)', () => {
+  it.each(['ca', 'es'] as const)(
+    'renders exact escaped proposals and admin links in %s',
+    (language) => {
+      const rendered = renderNotification(
+        env,
+        'N4',
+        { productId: applicantId, name: 'Tomàquet <cor> & bou' },
+        language,
+      );
+      expect(rendered.text).toContain('Tomàquet &lt;cor&gt; &amp; bou');
+      expect(rendered.text).toContain(
+        language === 'ca' ? 'Producte proposat' : 'Producto propuesto',
+      );
+      const [button] = rendered.replyMarkup!.inline_keyboard.flat();
+      expect(button && 'url' in button && button.url).toContain('startapp=a_catalog');
+    },
+  );
+  it.each(['resolved', 'rejected'] as const)(
+    'renders %s N5 for a member without an admin link',
+    (decision) => {
+      const rendered = renderNotification(
+        env,
+        'N5',
+        { productId: applicantId, name: '<Ous>', decision },
+        'es',
+      );
+      expect(rendered.text).toContain('&lt;Ous&gt;');
+      const [button] = rendered.replyMarkup!.inline_keyboard.flat();
+      expect(button && 'url' in button && button.url).toBe('https://t.me/AgroBotTest/app');
+    },
+  );
+  it('points failed sync notifications at the admin report', () => {
+    const rendered = renderNotification(env, 'N12', { syncId: applicantId }, 'es');
+    expect(rendered.text).toContain('conservado');
+    expect(rendered.replyMarkup!.inline_keyboard[0]?.[0]).toMatchObject({
+      url: 'https://t.me/AgroBotTest/app?startapp=a_catalog',
+    });
+  });
+});

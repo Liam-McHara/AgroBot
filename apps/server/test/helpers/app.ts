@@ -1,3 +1,5 @@
+import { createCatalogService } from '../../src/domain/catalog/service.js';
+import { createCatalogSource } from '../../src/integrations/catalog-source.js';
 import { pino } from 'pino';
 import { parseEnv } from '../../src/env.js';
 import { createApp } from '../../src/http/app.js';
@@ -21,6 +23,7 @@ export function testDeps(database: DatabaseHandle, overrides: NodeJS.ProcessEnv 
   });
   return {
     db: database.db,
+    catalog: createCatalogService({ db: database.db, source: createCatalogSource(env) }),
     env,
     logger: pino({ level: 'silent' }),
     members: createMembersService({ db: database.db, adminTelegramIds: env.ADMIN_TELEGRAM_IDS }),

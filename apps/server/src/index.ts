@@ -1,3 +1,6 @@
+import { createCatalogService } from './domain/catalog/service.js';
+import { createCatalogSource } from './integrations/catalog-source.js';
+import { registerCatalogSync, syncCatalogOnBoot } from './jobs/catalog-sync.js';
 import { serve, type ServerType } from '@hono/node-server';
 import { loadDotEnv } from './dotenv.js';
 import { EnvError, isProduction, parseEnv } from './env.js';
@@ -38,7 +41,8 @@ async function main(): Promise<void> {
     db: database.db,
     adminTelegramIds: env.ADMIN_TELEGRAM_IDS,
   });
-  const deps = { db: database.db, env, logger, members };
+  const catalog = createCatalogService({ db: database.db, source: createCatalogSource(env) });
+  const deps = { db: database.db, env, logger, members, catalog };
 
   logger.info({ version: APP_VERSION, commit: GIT_COMMIT, mode: env.BOT_MODE }, 'starting');
 
@@ -48,8 +52,9 @@ async function main(): Promise<void> {
   const bot = createBot(deps);
   const app = createApp(deps, env.BOT_MODE === 'webhook' ? { bot } : {});
 
-  // ARCH §9: the in-process jobs. Only the outbox dispatcher exists yet (ADR-0009).
+  // ARCH §9: in-process jobs share the API/domain implementations.
   const scheduler = createScheduler(logger);
+  registerCatalogSync(scheduler, catalog);
   const sender = grammySender(bot.api);
   scheduler.add({
     name: 'notifications.dispatch',
@@ -88,6 +93,9 @@ async function main(): Promise<void> {
   }
 
   scheduler.start();
+  void syncCatalogOnBoot(scheduler, catalog).catch((error: unknown) => {
+    logger.error({ err: error }, 'catalogue boot sync failed');
+  });
   registerCommands(bot, LANGUAGES).catch((error: unknown) => {
     logger.warn({ err: error }, 'could not register the command menu');
   });

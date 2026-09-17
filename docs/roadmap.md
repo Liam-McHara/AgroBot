@@ -105,19 +105,19 @@ products; admins see sync health.
 - [x] `integrations/google-sheets.ts` (service account) and `csv-catalog.ts` behind one
       `CatalogSource` interface; header alias normalization (ca/es/en); row parser with zod,
       unit mapping, price parsing (`,`/`.`); unit tests with fixture sheets incl. broken rows.
-- [ ] `domain/catalog`: `applyDiff` in one transaction (upsert by slug, archive missing,
+- [x] `domain/catalog`: `applyDiff` in one transaction (upsert by slug, archive missing,
       un-archive, resolve pending by slug, price-resolve open reservations — the last one is a
       no-op until M4 but the hook exists), content-hash short-circuit, zero-valid-rows guard,
       `catalog_syncs` logging; integration tests.
-- [ ] Job `catalog.sync` hourly + on boot if never synced; admin `POST /admin/catalog/sync`;
+- [x] Job `catalog.sync` hourly + on boot if never synced; admin `POST /admin/catalog/sync`;
       bot `/sync` (admin only) and `/status`.
-- [ ] Proposals: `POST /products/proposals`, N4 to admins with the exact name; admin
+- [x] Proposals: `POST /products/proposals`, N4 to admins with the exact name; admin
       `rename` / `reject` (reject cascades are stubs until offers exist in M3, then completed).
-- [ ] API `GET /products` (search, includes my pending), `GET /admin/catalog`.
+- [x] API `GET /products` (search, includes my pending), `GET /admin/catalog`.
 - [ ] Mini App: product picker component (search, "Propose «…»" with unit choice), Admin →
       Catalogue (last sync, errors table, product list with status filters, pending products
       with rename/reject and copy-to-clipboard name, link to the sheet).
-- [ ] N12 on failed sync.
+- [x] N12 on failed sync.
 
 **Definition of done**
 - Pointing the app at a test sheet imports it; editing a price and re-syncing updates it; deleting
@@ -148,7 +148,9 @@ products; admins see sync health.
 - [ ] Jobs `offers.expire` (daily 00:05 Europe/Madrid + boot) and `offers.nudge` (daily 09:00)
       with quick actions `still:<id>` / `withdraw:<id>`; stale flag; N10; tests with fake clock.
 - [ ] N11 reminder list on withdraw (lists open reservations; empty until M4).
-- [ ] Complete proposal-reject cascade from M2 (withdraw offers on the rejected product).
+- [ ] Complete proposal-reject cascade from M2 (withdraw offers on the rejected product),
+      and merge references on pending-product rename (ADR-0015; refuse overlapping active
+      offers by the same producer rather than combining them).
 - [ ] Mini App: Board (list, group toggle, search, category chips, offer detail sheet with a
       disabled reserve button until M4), My offers (list, publish form with picker, edit,
       withdraw, fully-reserved and expired states), offer deep link route.

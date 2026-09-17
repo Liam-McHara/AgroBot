@@ -11,6 +11,7 @@ import { requestId } from './middleware/request-id.js';
 import { requestLogging } from './middleware/logging.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { healthRoutes } from './routes/health.js';
+import { catalogRoutes } from './routes/catalog.js';
 import { meRoutes } from './routes/me.js';
 import { adminMemberRoutes } from './routes/admin-members.js';
 import type { AppContext, AppDeps } from './context.js';
@@ -62,6 +63,7 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
 
   app.route('/api', meRoutes(deps));
   app.route('/api', adminMemberRoutes(deps));
+  app.route('/api', catalogRoutes(deps));
 
   if (hasMiniApp) {
     app.use('/*', serveStatic({ root: join('.', publicDir) }));

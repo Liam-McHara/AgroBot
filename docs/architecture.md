@@ -258,7 +258,8 @@ re-activate them (same rules).
 (admin changes their mind). Role `member ⇄ admin` orthogonal to status.
 
 ### Product
-`pending → active` (sync match or admin rename that matches), `pending → (deleted)` on admin
+`pending → active` (sync match), or `pending → archived` when renamed to an existing active
+sheet product (references transfer to that product; ADR-0015), `pending → (deleted)` on admin
 reject (offers withdrawn, reservations cancelled), `active ⇄ archived` by sync.
 
 ## 7. Realtime (SSE)

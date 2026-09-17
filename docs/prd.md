@@ -179,7 +179,8 @@ wait for an admin before publishing surplus.
   resolves it (status active, price set). An admin can also **rename** a pending product to
   match a sheet row, or **reject** it (offers on it are withdrawn, their reservations
   cancelled, everybody involved notified). Renaming to an existing active sheet product
-  resolves the proposal into that product. A name belonging to another pending or archived
+  resolves the proposal into that product and archives the original proposal (ADR-0015).
+  A name belonging to another pending or archived
   product is a conflict. Renaming to a new name stays pending until the next matching sync.
 
 ## 7. Offers and the board

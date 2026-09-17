@@ -21,6 +21,7 @@ import {
   PRODUCT_STATUSES,
   UNIT_CODES,
   type CatalogSource,
+  type CatalogIssue,
   type CatalogSyncStatus,
   type CatalogSyncTrigger,
   type ProductSource,
@@ -91,7 +92,7 @@ export const catalogSyncs = pgTable(
     updated: integer('updated').notNull().default(0),
     archived: integer('archived').notNull().default(0),
     resolvedPending: integer('resolved_pending').notNull().default(0),
-    errors: jsonb('errors').$type<{ row: number; reason: string }[]>().notNull().default([]),
+    errors: jsonb('errors').$type<CatalogIssue[]>().notNull().default([]),
     triggeredBy: uuid('triggered_by').references(() => members.id, { onDelete: 'set null' }),
   },
   (table) => [

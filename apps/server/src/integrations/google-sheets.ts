@@ -1,4 +1,7 @@
-import { google } from 'googleapis';
+import {
+  auth as googleAuth,
+  sheets as createSheets,
+} from 'googleapis/build/src/apis/sheets/index.js';
 import { z } from 'zod';
 import type { CatalogSource } from '../domain/catalog/source.js';
 
@@ -17,11 +20,11 @@ export function createGoogleSheetsSource(config: SheetsConfig): CatalogSource {
       const credentials = credentialsSchema.parse(
         JSON.parse(Buffer.from(config.credentialsBase64, 'base64').toString('utf8')) as unknown,
       );
-      const auth = new google.auth.GoogleAuth({
+      const auth = new googleAuth.GoogleAuth({
         credentials,
         scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
       });
-      const sheets = google.sheets({ version: 'v4', auth });
+      const sheets = createSheets({ version: 'v4', auth });
       const response = await sheets.spreadsheets.values.get(
         {
           spreadsheetId: config.id,
