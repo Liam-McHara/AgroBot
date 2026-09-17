@@ -8,9 +8,11 @@ Mini App for the screens.
 
 ## Status
 
-**2.0 is specified and awaiting implementation.** The specification is complete and lives in
-[`docs/`](docs/README.md); the first milestone (M0 Foundation) creates the workspace described
-there. The 1.0 prototype is frozen under [`legacy/`](legacy/README.md).
+**2.0 is under construction.** The specification lives in [`docs/`](docs/README.md) and is the
+source of truth. Milestone **M0 Foundation** is done: the workspace, database, bot and Mini App
+shell run, and CI is green. The features start at M1 in
+[docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under
+[`legacy/`](legacy/README.md).
 
 | Document | Purpose |
 |---|---|
@@ -24,14 +26,53 @@ there. The 1.0 prototype is frozen under [`legacy/`](legacy/README.md).
 ## Stack (2.0)
 
 TypeScript everywhere · pnpm workspace · **grammY** (bot) · **Hono** (API) · **Drizzle** on
-**Postgres** · **Svelte 5 + Vite** Mini App · Vitest + Playwright · one container, e.g. Fly.io
-with Neon Postgres.
+**Postgres** · **Svelte 5 + Vite** Mini App · Vitest + Playwright · one container on
+**Railway** with Railway Postgres ([ADR-0012](docs/adr/0012-hosting-on-railway.md)).
 
 ## Getting started
 
-Not yet: the workspace is created in roadmap milestone M0. Until then, see
-[docs/README.md](docs/README.md#starting-a-milestone-in-a-fresh-claude-code-session) for the
-kick-off prompt.
+You need **Node 22**, **pnpm 10** (`corepack enable`) and **Docker** for the local Postgres.
+
+```bash
+pnpm install
+docker compose up -d                 # Postgres 16 on :5432, plus the agrobot_test database
+cp .env.example .env                 # then fill in BOT_TOKEN and ADMIN_TELEGRAM_IDS
+pnpm db:migrate && pnpm db:seed
+pnpm dev
+```
+
+`pnpm dev` starts the server on <http://localhost:8080> (bot in long-polling mode) and the
+Mini App on <http://localhost:5173>, which proxies `/api` to the server.
+
+For the bot, create a **throwaway** bot with [@BotFather](https://t.me/BotFather) and put its
+token in `BOT_TOKEN`. Never the group's production token: 2.0 reuses AgroBot 1.0's identity,
+and one token can have exactly one consumer
+([ADR-0013](docs/adr/0013-reuse-the-1-0-bot-identity.md)). Put your own Telegram id (ask
+[@userinfobot](https://t.me/userinfobot)) in `ADMIN_TELEGRAM_IDS` to be an admin.
+
+Opened at <http://localhost:5173> rather than inside Telegram, the Mini App signs in as
+`VITE_DEV_TELEGRAM_ID` through the development bypass, which `env.ts` refuses to enable in
+production. Switch member from the browser console:
+
+```js
+localStorage.setItem('agrobot.devTelegramId', '900000002'); // the seeded es-speaking member
+```
+
+To open it inside Telegram, expose the server (`cloudflared tunnel --url http://localhost:8080`),
+set `PUBLIC_URL` and `TELEGRAM_WEBHOOK_SECRET`, switch `BOT_MODE=webhook`, and point the Mini
+App URL in @BotFather at the tunnel.
+
+### Checks
+
+```bash
+pnpm lint          # eslint + prettier + the ca/es catalogue check
+pnpm typecheck
+pnpm test          # unit everywhere, integration against Postgres
+pnpm build
+```
+
+Integration tests need Postgres at `TEST_DATABASE_URL` (default `…/agrobot_test`, created by
+`docker compose`). Without it they skip locally with a warning, and fail in CI.
 
 ## License
 

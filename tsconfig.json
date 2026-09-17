@@ -1,0 +1,14 @@
+{
+  "//": "Root config exists so editors and `eslint` have a project to hang off. The real",
+  "//2": "compilation happens in each workspace. legacy/ is excluded everywhere (ADR-0008).",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["scripts/**/*.mjs", "*.config.js"],
+  "exclude": ["node_modules", "dist", "legacy", "apps", "packages"]
+}

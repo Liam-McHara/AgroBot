@@ -1,0 +1,43 @@
+{
+  "name": "agrobot",
+  "version": "2.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0 <23",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "build:shared": "pnpm --filter @agrobot/shared build",
+    "typecheck": "pnpm run build:shared && pnpm -r typecheck",
+    "test": "pnpm run build:shared && pnpm -r test",
+    "lint": "eslint . && prettier --check . && pnpm run i18n:check",
+    "format": "prettier --write .",
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "dev": "pnpm run build:shared && pnpm -r --parallel --stream dev",
+    "db:migrate": "pnpm run build:shared && pnpm --filter @agrobot/server db:migrate",
+    "db:seed": "pnpm run build:shared && pnpm --filter @agrobot/server db:seed",
+    "db:generate": "pnpm run build:shared && pnpm --filter @agrobot/server db:generate"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.23.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.7",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.57.0",
+    "svelte-eslint-parser": "^1.8.1",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "valibot": "^1.4.2"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+# AgroBot 1.0, frozen (ADR-0008)
+legacy/
+
+node_modules/
+dist/
+build/
+coverage/
+pnpm-lock.yaml
+LICENSE
+apps/server/src/db/migrations/
+playwright-report/
+test-results/
+
+# Markdown is hand-maintained: docs/ is the specification and is wrapped at ~100 columns by
+# hand (docs/README.md "Conventions for these documents"). Prettier re-flows lists and tables,
+# which would churn the source of truth on every unrelated commit.
+*.md
