@@ -1,0 +1,26 @@
+# Local Postgres for development and integration tests (ARCH §14).
+# Production uses Railway Postgres (ADR-0012); nothing here ships in the image.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agrobot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agrobot
+      POSTGRES_PASSWORD: agrobot
+      POSTGRES_DB: agrobot
+      # Integration tests use their own database so a `pnpm test` cannot wipe your dev data.
+      POSTGRES_MULTIPLE_DATABASES: agrobot_test
+    ports:
+      - '5432:5432'
+    volumes:
+      - agrobot-postgres:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sh:/docker-entrypoint-initdb.d/10-create-test-database.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U agrobot -d agrobot']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  agrobot-postgres:

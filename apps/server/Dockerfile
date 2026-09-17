@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+
+# AgroBot 2.0 image (ARCH §15): one container with the API, the bot and the built Mini App.
+# Build context is the repository root:  docker build -f apps/server/Dockerfile .
+
+# ── Stage 1: install every workspace dependency ───────────────────────────────────────────
+FROM node:22-alpine AS deps
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+WORKDIR /repo
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/server/package.json apps/server/
+COPY apps/miniapp/package.json apps/miniapp/
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# ── Stage 2: build shared, the Mini App and the server ────────────────────────────────────
+FROM deps AS build
+WORKDIR /repo
+COPY tsconfig.base.json ./
+COPY packages/shared packages/shared
+COPY apps/server apps/server
+COPY apps/miniapp apps/miniapp
+
+ARG APP_VERSION=2.0.0-alpha.0
+ARG GIT_COMMIT=unknown
+ENV APP_VERSION=$APP_VERSION
+ENV GIT_COMMIT=$GIT_COMMIT
+
+RUN pnpm --filter @agrobot/shared build \
+  && pnpm --filter @agrobot/miniapp build \
+  && pnpm --filter @agrobot/server build
+
+# The server serves the Mini App from ./public relative to its working directory.
+RUN cp -r apps/miniapp/dist apps/server/public
+
+# Drop everything that is not needed to run: `deploy` copies the package's `files`
+# (dist, public) plus its production dependencies, with @agrobot/shared materialized.
+RUN pnpm --filter @agrobot/server --prod deploy --legacy /runtime
+
+# ── Stage 3: runtime ──────────────────────────────────────────────────────────────────────
+FROM node:22-alpine AS runtime
+ENV NODE_ENV=production
+ENV PORT=8080
+ENV TZ=Europe/Madrid
+WORKDIR /app
+
+COPY --from=build --chown=node:node /runtime ./
+
+USER node
+EXPOSE 8080
+
+# Migrations run on boot, before the HTTP server listens (ARCH §15, src/index.ts).
+CMD ["node", "dist/index.js"]

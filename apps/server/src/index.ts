@@ -1,6 +1,6 @@
 import { serve, type ServerType } from '@hono/node-server';
 import { loadDotEnv } from './dotenv.js';
-import { EnvError, parseEnv } from './env.js';
+import { EnvError, isProduction, parseEnv } from './env.js';
 import { createLogger } from './logger.js';
 import { createDatabase } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
@@ -44,11 +44,21 @@ async function main(): Promise<void> {
   });
 
   if (env.BOT_MODE === 'polling') {
-    // `bot.start()` resolves only when the bot stops, so it is deliberately not awaited.
-    void bot.start({
-      onStart: (me) => logger.info({ username: me.username }, 'bot polling'),
-      drop_pending_updates: false,
-    });
+    // `bot.start()` resolves only when the bot stops, so it is deliberately not awaited — but
+    // a bot that cannot start (a wrong token, a webhook already registered on it per
+    // ADR-0013) must bring the process down rather than leave a half-working deployment up.
+    void bot
+      .start({
+        onStart: (me) => logger.info({ username: me.username }, 'bot polling'),
+        drop_pending_updates: false,
+      })
+      .catch((error: unknown) => {
+        logger.fatal({ err: error }, 'bot could not start');
+        // In production a bot that cannot start is a broken deployment, not a warning. In
+        // development it usually means BOT_TOKEN is still the placeholder, and the API and
+        // the Mini App are worth keeping up while you go and ask @BotFather for one.
+        if (isProduction(env)) process.exit(1);
+      });
   } else {
     const url = `${env.PUBLIC_URL!.replace(/\/$/, '')}${WEBHOOK_PATH}`;
     await bot.init();
@@ -59,16 +69,37 @@ async function main(): Promise<void> {
     logger.info({ url, username: bot.botInfo.username }, 'webhook registered');
   }
 
+  /**
+   * A restart must lose nothing (PRD §12): stop taking requests, let the bot finish the
+   * update it is holding, close the pool. All of it on a deadline — a platform that sends
+   * SIGTERM sends SIGKILL a few seconds later, and hanging until then helps nobody.
+   */
+  const SHUTDOWN_DEADLINE_MS = 10_000;
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, 'shutting down');
-    const closed = new Promise<void>((resolveClose) => server.close(() => resolveClose()));
-    if (env.BOT_MODE === 'polling') await bot.stop();
-    await closed;
-    await database.close();
+
+    const httpClosed = new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    const botStopped =
+      env.BOT_MODE === 'polling'
+        ? bot.stop().catch((error: unknown) => logger.warn({ err: error }, 'bot stop failed'))
+        : Promise.resolve();
+    const deadline = new Promise<'deadline'>((resolveDeadline) => {
+      setTimeout(() => resolveDeadline('deadline'), SHUTDOWN_DEADLINE_MS).unref();
+    });
+
+    const outcome = await Promise.race([
+      Promise.all([httpClosed, botStopped]).then(() => 'drained' as const),
+      deadline,
+    ]);
+    if (outcome === 'deadline') logger.warn('shutdown deadline reached, exiting anyway');
+
+    await database.close().catch((error: unknown) => logger.warn({ err: error }, 'db close'));
     logger.info('bye');
+    // pino buffers; `process.exit` would throw away the very lines that explain the exit.
+    await new Promise<void>((resolveFlush) => logger.flush(() => resolveFlush()));
     process.exit(0);
   };
 
@@ -79,4 +110,9 @@ async function main(): Promise<void> {
   });
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  process.stderr.write(`AgroBot failed to start: ${String(error)}\n`);
+  process.exit(1);
+}

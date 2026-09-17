@@ -68,6 +68,7 @@ export default tseslint.config(
   {
     files: [
       'scripts/**/*.{js,mjs,ts}',
+      '*/*/scripts/**/*.{js,mjs,ts}',
       '**/*.config.{js,mjs,ts}',
       'apps/server/src/db/seed.ts',
       'apps/server/src/db/migrate.ts',

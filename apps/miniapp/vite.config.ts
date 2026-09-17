@@ -8,6 +8,8 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
  */
 export default defineConfig({
   plugins: [svelte()],
+  // One `.env` for the whole workspace (ARCH §13); Vite exposes the `VITE_*` keys only.
+  envDir: '../../',
   server: {
     port: 5173,
     proxy: {
