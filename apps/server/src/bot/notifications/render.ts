@@ -38,6 +38,18 @@ function nameWithUsername(name: string, username: string | null): string {
 }
 
 export const renderers: RendererRegistry = {
+  N4: (payload, { t, link }) => ({
+    text: t('notification.N4.text', { name: escapeHtml(payload.name) }),
+    replyMarkup: new InlineKeyboard().url(t('catalog.title'), link('a_catalog')),
+  }),
+  N5: (payload, { t, link }) => ({
+    text: t(`notification.N5.${payload.decision}`, { name: escapeHtml(payload.name) }),
+    replyMarkup: new InlineKeyboard().url(t('bot.button.open_app'), link()),
+  }),
+  N12: (_payload, { t, link }) => ({
+    text: t('notification.N12.text'),
+    replyMarkup: new InlineKeyboard().url(t('catalog.title'), link('a_catalog')),
+  }),
   /** PRD N1: new applicant → all admins, with Approve · Reject. */
   N1: (payload, { t }) => ({
     text: t('notification.N1.text', {

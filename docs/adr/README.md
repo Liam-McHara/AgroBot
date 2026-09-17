@@ -19,6 +19,7 @@ edited after acceptance except to change the status (e.g. *Superseded by ADR-00x
 | [0012](0012-hosting-on-railway.md) | Host the service and Postgres on Railway | Accepted |
 | [0013](0013-reuse-the-1-0-bot-identity.md) | Reuse AgroBot 1.0's bot token and username | Accepted |
 | [0014](0014-confirm-and-deliver-shortcut.md) | Confirm-and-deliver as one Mini App action | Accepted |
+| [0015](0015-retain-merged-product-proposals.md) | Archive proposals resolved into an existing sheet product | Accepted |
 
 ## Template
 

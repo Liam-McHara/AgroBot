@@ -22,6 +22,9 @@ export interface MembershipDecidedPayload {
 export interface NotificationPayloads {
   N1: NewApplicantPayload;
   N2: MembershipDecidedPayload;
+  N4: { productId: string; name: string };
+  N5: { productId: string; name: string; decision: 'resolved' | 'rejected' };
+  N12: { syncId: string };
 }
 
 export type ImplementedNotificationKind = keyof NotificationPayloads & NotificationKind;

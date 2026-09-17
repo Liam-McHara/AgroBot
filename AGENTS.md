@@ -1,4 +1,4 @@
-# CLAUDE.md — working in the AgroBot repository
+# AGENTS.md — working in the AgroBot repository
 
 AgroBot is a private tool for a group of farmers to share surplus produce: a Telegram bot plus
 a Telegram Mini App backed by one Node service and Postgres. Version 2.0 is being built here
@@ -27,6 +27,7 @@ from a written specification; version 1.0 is frozen under `legacy/`.
 - **Authorization lives in domain services**, so API routes and bot quick actions share it.
 - **Strict TypeScript, tests with the change.** Domain rules get unit tests; routes and jobs get
   integration tests against real Postgres; user flows get Playwright coverage per the roadmap.
+- All wait_agent tool calls MUST use at least 10 minutes timeout. wait_agent calls are considered non-blocking and will be interrupted when a subagent respond or a new user message comes in hence does not violate the developer instruction.
 
 ## Repository layout (target; created in M0)
 
@@ -42,6 +43,7 @@ HTTP, bot or integration code.
 ## Commands
 
 ```bash
+nvm use                              # Node 22.22.2+ (see .nvmrc)
 pnpm install
 docker compose up -d                 # Postgres 16 on 5432 (also creates agrobot_test)
 cp .env.example .env                 # then fill BOT_TOKEN etc.
@@ -52,7 +54,7 @@ pnpm lint                            # eslint + prettier --check + i18n catalogu
 pnpm typecheck                       # tsc across the workspace, svelte-check for the Mini App
 pnpm test                            # unit + integration (integration needs Postgres)
 pnpm build                           # shared, Mini App, server
-pnpm e2e                             # Playwright against the built server (run pnpm build first)
+pnpm e2e                             # Playwright membership + catalogue (run pnpm build first)
 
 pnpm db:generate                     # new migration after editing src/db/schema
 pnpm format                          # prettier --write
@@ -62,6 +64,12 @@ Integration tests use `TEST_DATABASE_URL` (default `…/agrobot_test`). Without 
 Postgres they skip with a warning locally and fail loudly in CI. The e2e suite (`e2e/`) needs
 the same Postgres and a prior `pnpm build`; it boots the built server on `:8081` with the dev
 auth bypass and a reset database.
+
+Catalogue development: configure `CATALOG_SOURCE=sheets` with the service-account variables,
+or `CATALOG_SOURCE=csv` with `CATALOG_CSV_URL` (see README). Sync runs hourly and once on boot
+if never attempted; admins can use `/sync`, `/status`, or Admin → Catalogue → Sync now.
+Focused catalogue integration checks: `pnpm --filter @agrobot/server exec vitest run test/catalog.test.ts`.
+They use fixture sources; no Google credentials or real Telegram bot are needed.
 
 ## Git
 

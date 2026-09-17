@@ -9,9 +9,10 @@ Mini App for the screens.
 ## Status
 
 **2.0 is under construction.** The specification lives in [`docs/`](docs/README.md) and is the
-source of truth. Milestones **M0 Foundation** and **M1 Identity and membership** are done: the
-workspace runs, strangers apply with `/start`, admins approve from Telegram or the Mini App,
-and every screen speaks Catalan and Spanish. The next milestone is M2 in
+source of truth. Milestones **M0 Foundation**, **M1 Identity and membership** and **M2 Catalogue**
+are done: the workspace runs, strangers apply with `/start`, admins approve from Telegram or the Mini App,
+products and prices sync from the sheet, members can propose missing products, and admins
+can review sync health. Every screen speaks Catalan and Spanish. The next milestone is M3 in
 [docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under
 [`legacy/`](legacy/README.md).
 
@@ -32,9 +33,10 @@ TypeScript everywhere · pnpm workspace · **grammY** (bot) · **Hono** (API) ·
 
 ## Getting started
 
-You need **Node 22**, **pnpm 10** (`corepack enable`) and **Docker** for the local Postgres.
+You need **Node 22.22.2+ (22.x)**, **pnpm 10** (`corepack enable`) and **Docker** for local Postgres.
 
 ```bash
+nvm use
 pnpm install
 docker compose up -d                 # Postgres 16 on :5432, plus the agrobot_test database
 cp .env.example .env                 # then fill in BOT_TOKEN and ADMIN_TELEGRAM_IDS
@@ -62,6 +64,37 @@ localStorage.setItem('agrobot.devTelegramId', '900000002'); // the seeded es-spe
 To open it inside Telegram, expose the server (`cloudflared tunnel --url http://localhost:8080`),
 set `PUBLIC_URL` and `TELEGRAM_WEBHOOK_SECRET`, switch `BOT_MODE=webhook`, and point the Mini
 App URL in @BotFather at the tunnel.
+
+### Catalogue sources
+
+Create a `Productes` tab with `Producte`, `Unitat`, `Preu` and optional `Categoria` and
+`Producto (es)` columns ([full rules](docs/prd.md#6-catalogue-products-and-prices)). Configure
+one source in `.env`:
+
+- **Google Sheets:** `CATALOG_SOURCE=sheets`, `GOOGLE_SHEET_ID`,
+  `GOOGLE_SHEET_RANGE=Productes!A:E`, and `GOOGLE_SERVICE_ACCOUNT_JSON` containing the base64
+  service-account JSON key. Enable the Sheets API and share the sheet with that account's
+  email as a **viewer**. The adapter requests only `spreadsheets.readonly` access.
+- **Published CSV:** `CATALOG_SOURCE=csv` and `CATALOG_CSV_URL` pointing at the tab's
+  publish-to-web CSV URL. This source is readable by anyone holding its URL.
+
+Sync runs hourly and on boot if no sync has ever been attempted. Admins can run `/sync` in
+Telegram or **Admin → Catalogue → Sync now**. `/status` reports membership, offers,
+reservations, last sync and app version. The admin screen shows row errors and unit-change
+warnings; failed reads or zero valid rows preserve the existing catalogue and queue N12.
+Members can search and propose products under **My offers**; offer publication arrives in M3.
+
+To check the full M2 scenario without a Google account:
+
+```bash
+pnpm --filter @agrobot/server exec vitest run test/catalog.test.ts
+pnpm build
+pnpm e2e
+```
+
+The integration and browser suites serve their own CSV fixtures over local HTTP, including
+price edits, missing rows, invalid units, empty sheets and a proposal resolved on the next sync.
+The Google adapter has mocked API tests; a deployment still needs its real sheet and key.
 
 ### Checks
 

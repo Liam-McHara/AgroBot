@@ -11,6 +11,7 @@ import type { User } from 'grammy/types';
 import type { Member } from '../db/schema/index.js';
 import type { TelegramIdentity } from '../domain/members/rules.js';
 import type { IdentifyResult } from '../domain/members/service.js';
+import { APP_VERSION, GIT_COMMIT } from '../version.js';
 import { isAppError } from '../errors.js';
 import type { AppDeps } from '../http/context.js';
 import { miniAppLink, parseQuickAction } from './deep-links.js';
@@ -75,6 +76,51 @@ export function createBot(deps: AppDeps): Bot {
     const { member } = await deps.members.identify(identityOf(ctx.from));
     await replyHelp(ctx, member);
   });
+
+  for (const command of ['sync', 'status'] as const) {
+    privateChats.command(command, async (ctx) => {
+      const { member } = await deps.members.identify(identityOf(ctx.from));
+      const t = createTranslator(member.language);
+      try {
+        if (command === 'sync') {
+          const sync = await deps.catalog.sync({ trigger: 'command', actor: member });
+          await ctx.reply(
+            `${t(`catalog.sync.${sync.status}`)}\n${t('catalog.sync.summary', {
+              rows: sync.rowsRead,
+              created: sync.created,
+              updated: sync.updated,
+              archived: sync.archived,
+              resolved: sync.resolvedPending,
+            })}`,
+            {
+              reply_markup: new InlineKeyboard().url(
+                t('catalog.title'),
+                miniAppLink(deps.env, 'a_catalog'),
+              ),
+            },
+          );
+        } else {
+          const status = await deps.catalog.status(member);
+          const sync = status.lastSync
+            ? `${t('catalog.last_sync', { when: status.lastSync.startedAt.toISOString() })} · ${t(`catalog.sync.${status.lastSync.status}`)}`
+            : t('catalog.never_synced');
+          await ctx.reply(
+            t('bot.status', {
+              version: APP_VERSION,
+              commit: GIT_COMMIT,
+              members: status.members,
+              offers: status.offers,
+              reservations: status.reservations,
+              sync,
+            }),
+          );
+        }
+      } catch (error) {
+        if (!isAppError(error)) throw error;
+        await ctx.reply(error.body(member.language).error.message);
+      }
+    });
+  }
 
   // ADR-0013: people arrive with 1.0 habits (typing orders at the bot). Anything that is not
   // a command we know gets the same short orientation as /help.
@@ -189,6 +235,8 @@ export async function registerCommands(bot: Bot, languages: readonly Language[])
       [
         { command: 'start', description: t('bot.command.start') },
         { command: 'help', description: t('bot.command.help') },
+        { command: 'sync', description: t('bot.command.sync') },
+        { command: 'status', description: t('bot.command.status') },
       ],
       { language_code: language },
     );

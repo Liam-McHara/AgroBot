@@ -145,14 +145,21 @@ the app are always the ones the group agreed on.
   | `Categoria` / `Categoría` / `Category` | no | Free text, 1–40 chars. |
   | `Producto (es)` / `Nom es` / `Name es` | no | Spanish name shown to `es` members; falls back to the main name. |
 
+- Prices have at most two decimal places (no thousands separators), up to EUR 21,474,836.47
+  (the integer-cent storage limit). Optional Spanish names follow the main name length rules.
+- Duplicate normalized names invalidate every occurrence; duplicate aliases for one header
+  reject the sheet. Blank rows are ignored but still count toward sheet row numbers.
 - Rows with errors are skipped and reported (row number + reason); valid rows are still
   applied. A sheet with **zero** valid rows is rejected entirely (protects against a broken
-  sheet wiping the catalogue).
+  sheet wiping the catalogue). A recognizable name on an invalid row preserves that existing
+  product unchanged; only names absent from the sheet are archived.
 - Products present in the app but missing from the sheet are **archived**: hidden from the
   product picker, but existing offers and reservations keep working and show the product.
   Re-adding the row un-archives it.
 - Price or unit changes apply to new reservations only; existing reservations keep their
   snapshot. Changing the unit of a product that has active offers is reported as a warning.
+- Repeating unchanged input preserves validation errors and performs no product writes.
+  Pending proposals must still be resolved even if the sheet content has not changed.
 - Each sync is logged (when, rows read, created/updated/archived, errors) and the last result
   is visible to admins.
 
@@ -165,11 +172,16 @@ wait for an admin before publishing surplus.
 - Offers on pending products appear on the board with a "price pending" badge instead of a
   price. They can be reserved; the reservation's price snapshot is empty until the product is
   resolved, at which point open (pending/confirmed) reservations receive the price.
-- Admins are notified once per proposal, with the exact name to paste into the sheet.
+- Admins are notified once per proposal, with the exact name to paste into the sheet. A
+  repeated proposal by its owner returns the same product; a name already used by another
+  product is a conflict (including another member's pending proposal).
 - On the next sync, a sheet row whose normalized name equals the pending product's name
   resolves it (status active, price set). An admin can also **rename** a pending product to
   match a sheet row, or **reject** it (offers on it are withdrawn, their reservations
-  cancelled, everybody involved notified).
+  cancelled, everybody involved notified). Renaming to an existing active sheet product
+  resolves the proposal into that product and archives the original proposal (ADR-0015).
+  A name belonging to another pending or archived
+  product is a conflict. Renaming to a new name stays pending until the next matching sync.
 
 ## 7. Offers and the board
 

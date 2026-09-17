@@ -1,3 +1,4 @@
+import type { CatalogService } from '../domain/catalog/service.js';
 import type { Language } from '@agrobot/shared';
 import type { Database } from '../db/client.js';
 import type { Env } from '../env.js';
@@ -11,6 +12,7 @@ export interface AppDeps {
   readonly env: Env;
   readonly logger: Logger;
   readonly members: MembersService;
+  readonly catalog: CatalogService;
 }
 
 export interface AppVariables {
