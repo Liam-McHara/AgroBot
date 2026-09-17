@@ -1,4 +1,4 @@
-# CLAUDE.md — working in the AgroBot repository
+# AGENTS.md — working in the AgroBot repository
 
 AgroBot is a private tool for a group of farmers to share surplus produce: a Telegram bot plus
 a Telegram Mini App backed by one Node service and Postgres. Version 2.0 is being built here
@@ -27,6 +27,7 @@ from a written specification; version 1.0 is frozen under `legacy/`.
 - **Authorization lives in domain services**, so API routes and bot quick actions share it.
 - **Strict TypeScript, tests with the change.** Domain rules get unit tests; routes and jobs get
   integration tests against real Postgres; user flows get Playwright coverage per the roadmap.
+- All wait_agent tool calls MUST use at least 10 minutes timeout. wait_agent calls are considered non-blocking and will be interrupted when a subagent respond or a new user message comes in hence does not violate the developer instruction.
 
 ## Repository layout (target; created in M0)
 
@@ -42,6 +43,7 @@ HTTP, bot or integration code.
 ## Commands
 
 ```bash
+nvm use                              # Node 22.22.2+ (see .nvmrc)
 pnpm install
 docker compose up -d                 # Postgres 16 on 5432 (also creates agrobot_test)
 cp .env.example .env                 # then fill BOT_TOKEN etc.

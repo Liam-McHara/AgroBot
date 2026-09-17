@@ -316,8 +316,17 @@ fetchRows()  ──►  normalizeHeaders()  ──►  parseRow() ×N  ──►
 ```
 
 - `slug = name.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().trim().replace(/\s+/g,' ')`.
-- A content hash of the fetched rows is stored on the sync row; identical hash → `ok`, no
-  writes, no notification.
+- A content hash of fetched rows is stored on the sync row. Identical content with no pending
+  match or other catalogue drift skips product writes; each attempt still logs its result.
+  Invalid rows keep the report `partial`; warnings/errors remain visible.
+- Sync, proposal and pending-product actions serialize with one transaction advisory lock.
+  Fetch runs under that lock so a slower, older fetch cannot overwrite a later result.
+  Manual/command sync checks the actor before fetching and again before applying changes.
+- Validation diagnostics persist reason codes, row numbers (0 for source-wide failures), and
+  severity, translated by the UI. Source failures never expose credentials or source bodies.
+- M2 provides transaction hooks for pending resolution, merge and rejection. M3 wires offer
+  references; M4 wires reservation snapshots/cancellation. Until then, attempting a destructive
+  action on a referenced proposal fails safely rather than deleting downstream records.
 - Zero valid rows → `failed`, nothing applied, N12 to admins.
 - Sheets mode: `GOOGLE_SERVICE_ACCOUNT_JSON` (base64 of the key file), `GOOGLE_SHEET_ID`,
   `GOOGLE_SHEET_RANGE` (default `Productes!A:E`). The sheet must be shared read-only with the
