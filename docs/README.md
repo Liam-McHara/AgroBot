@@ -52,7 +52,7 @@ Paste something like this as the first message (adjust the milestone):
 > Read `CLAUDE.md`, `docs/README.md`, `docs/prd.md`, `docs/architecture.md` and the ADRs,
 > then read `docs/roadmap.md` and implement **M0 — Foundation** completely.
 > Work on a branch named `m0-foundation`, commit in small steps, keep `pnpm lint typecheck test build`
-> green, update the roadmap check boxes and AGENTS.md commands as you go, and stop when the
+> green, update the roadmap check boxes and CLAUDE.md commands as you go, and stop when the
 > definition of done holds. If the spec is ambiguous or wrong, fix the spec in the same PR and
 > tell me what you changed.
 
