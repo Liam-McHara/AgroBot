@@ -1,6 +1,6 @@
 # ADR-0012: Host the service and Postgres on Railway
 
-- Status: Accepted
+- Status: Superseded by [ADR-0016](0016-hosting-on-cloudflare-workers-and-neon.md) (2026-09-18)
 - Date: 2026-09-17
 
 ## Context

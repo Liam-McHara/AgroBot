@@ -1,8 +1,10 @@
 # AGENTS.md — working in the AgroBot repository
 
 AgroBot is a private tool for a group of farmers to share surplus produce: a Telegram bot plus
-a Telegram Mini App backed by one Node service and Postgres. Version 2.0 is being built here
-from a written specification; version 1.0 is frozen under `legacy/`.
+a Telegram Mini App backed by one Cloudflare Worker, one Durable Object and a Neon Postgres,
+all on free plans (ADR-0016, ADR-0017). Version 2.0 is being built here from a written
+specification; version 1.0 is frozen under `legacy/`. Until roadmap **M2.5** lands, the code
+still runs as one Node process; M2.5 is the milestone that moves it.
 
 ## Start here, every session
 
@@ -25,20 +27,28 @@ from a written specification; version 1.0 is frozen under `legacy/`.
 - **Notifications go through the outbox** (`notifications` table), never straight to the
   Telegram API from domain code.
 - **Authorization lives in domain services**, so API routes and bot quick actions share it.
+- **Nothing polls Postgres on a timer.** Jobs run from the hub's alarm when something is due
+  (ADR-0017); after a commit that creates a deadline or a notification, call `hub.wake()`. A
+  fixed-interval sweep would keep the free database awake all month (ADR-0016).
+- **A request handler does one member's work.** Fan-outs, the catalogue sync and anything else
+  that grows with the group run in the hub (30 s of CPU), never in a request (10 ms).
 - **Strict TypeScript, tests with the change.** Domain rules get unit tests; routes and jobs get
-  integration tests against real Postgres; user flows get Playwright coverage per the roadmap.
+  integration tests against real Postgres; the hub gets tests under
+  `@cloudflare/vitest-pool-workers`; user flows get Playwright coverage per the roadmap.
 - All wait_agent tool calls MUST use at least 10 minutes timeout. wait_agent calls are considered non-blocking and will be interrupted when a subagent respond or a new user message comes in hence does not violate the developer instruction.
 
 ## Repository layout (target; created in M0)
 
 ```
-apps/server     Hono + grammY + Drizzle + jobs        packages/shared  zod contracts, enums, i18n
-apps/miniapp    Svelte 5 + Vite Telegram Mini App     docs/            the specification
-legacy/         AgroBot 1.0, frozen                   .github/         CI
-e2e/            Playwright suite against the built server
+apps/server     Hono + grammY + Drizzle + jobs + the   packages/shared  zod contracts, enums, i18n
+                AgroBotHub Durable Object; wrangler.jsonc docs/         the specification
+apps/miniapp    Svelte 5 + Vite Telegram Mini App     legacy/          AgroBot 1.0, frozen
+e2e/            Playwright suite against wrangler dev  .github/         CI + deploy on main
 ```
 Dependency rule: `miniapp` and `server` → `shared`. `domain/` inside the server imports no
-HTTP, bot or integration code.
+HTTP, bot, hub or integration code. From M2.5 the server runs on workerd: no Node-only
+library in `apps/server/src` (the `node:` modules workerd implements are fine); `node:fs` and
+friends only in `db/migrate.ts`, `db/seed.ts` and `scripts/`.
 
 ## Commands
 
@@ -65,6 +75,11 @@ Postgres they skip with a warning locally and fail loudly in CI. The e2e suite (
 the same Postgres and a prior `pnpm build`; it boots the built server on `:8081` with the dev
 auth bypass and a reset database.
 
+The command names above survive M2.5; their internals change (ARCH §14–§15): `pnpm dev` runs
+`wrangler dev --port 8080`, Vite and the Telegram forwarder; `pnpm build` validates the Worker
+bundle with `wrangler deploy --dry-run`; `pnpm e2e` boots `wrangler dev`; and two scripts are
+added, `pnpm bot:set-webhook` and `pnpm dev:telegram`. Update this section in the M2.5 PR.
+
 Catalogue development: configure `CATALOG_SOURCE=sheets` with the service-account variables,
 or `CATALOG_SOURCE=csv` with `CATALOG_CSV_URL` (see README). Sync runs hourly and once on boot
 if never attempted; admins can use `/sync`, `/status`, or Admin → Catalogue → Sync now.
@@ -79,7 +94,8 @@ They use fixture sources; no Google credentials or real Telegram bot are needed.
 - Types: `feat` · `fix` · `docs` · `refactor` · `test` · `build` · `ci` · `chore` · `perf` ·
   `style` · `revert`. Anything user-visible is `feat` or `fix`; spec edits are `docs`.
 - Scopes are the workspace or area touched: `server`, `miniapp`, `shared`, `db`, `bot`, `api`,
-  `domain`, `jobs`, `i18n`, `docs`, `ci`. Omit the scope only for repo-wide changes.
+  `domain`, `jobs`, `hub`, `i18n`, `docs`, `ci`, `deploy`. Omit the scope only for repo-wide
+  changes.
 - Body (wrapped at ~100 columns) explains **why**, not what. Reference `US-x.y` / `N<n>` /
   `ADR-00NN` there, and close roadmap tasks with a `Refs:` footer.
 - Breaking changes: `!` after the scope **and** a `BREAKING CHANGE:` footer explaining the

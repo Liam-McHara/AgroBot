@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
-# AgroBot 2.0 image (ARCH §15): one container with the API, the bot and the built Mini App.
+# AgroBot 2.0 image: one container with the API, the bot and the built Mini App.
 # Build context is the repository root:  docker build -f apps/server/Dockerfile .
+#
+# Deprecated. ADR-0016 moves the runtime to Cloudflare Workers; roadmap M2.5 deletes this file
+# together with the Node entry point it packages. Until then it still describes how the
+# current `node dist/index.js` runs, which is why it is kept and not updated.
 
 # ── Stage 1: install every workspace dependency ───────────────────────────────────────────
 FROM node:22-alpine AS deps

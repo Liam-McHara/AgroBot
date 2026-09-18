@@ -14,14 +14,16 @@ Legend: **PRD** → [prd.md](prd.md), **ARCH** → [architecture.md](architectur
 | [M0 Foundation](#m0--foundation) | Empty but complete workspace: tooling, DB, CI, container, dev loop. | — |
 | [M1 Identity and membership](#m1--identity-and-membership) | `/start`, approval flow, Mini App shell with gate, i18n, settings. | M0 |
 | [M2 Catalogue](#m2--catalogue) | Sheet sync, units, products, proposals, admin catalogue screen. | M1 |
-| [M3 Offers and board](#m3--offers-and-board) | Publish/edit/withdraw, board, new-offer notifications, expiry and nudges. | M2 |
+| [M2.5 Free hosting](#m25--free-hosting-cloudflare-workers-durable-object-neon) | The same app on Cloudflare Workers + one Durable Object + Neon, all free; no always-on process left. | M2 |
+| [M3 Offers and board](#m3--offers-and-board) | Publish/edit/withdraw, board, new-offer notifications, expiry and nudges. | M2.5 |
 | [M4 Reservations](#m4--reservations) | Full lifecycle with jobs, notifications, quick actions, screens. | M3 |
-| [M5 Chat](#m5--chat) | Threads, SSE, unread, throttled notifications, native DM link. | M4 |
+| [M5 Chat](#m5--chat) | Threads, live messages, unread, throttled notifications, native DM link. | M4 |
 | [M6 Admin, hardening, launch](#m6--admin-hardening-launch) | Admin members/settings, rate limits, e2e, docs, production, pilot. | M5 |
 | [Post-2.0 backlog](#post-20-backlog) | Deferred items, in the order we expect to want them. | 2.0 live |
 
 Estimated effort is deliberately not given per task; the milestone ordering and definitions of
-done are the commitment.
+done are the commitment. M2.5 was inserted on 2026-09-18 when hosting moved to free plans
+(ADR-0016); M3–M6 keep their numbers because accepted ADRs reference them.
 
 ---
 
@@ -30,7 +32,8 @@ done are the commitment.
 **Goal.** A developer (or a fresh Claude Code session) can clone, run `pnpm dev`, get a
 running server with a migrated database and a blank Mini App, and CI is green.
 
-**Spec.** ARCH §2, §3, §13–§16 · ADR-0002, 0006, 0008, 0012 (Railway), 0013 (bot identity).
+**Spec.** ARCH §2, §3, §13–§16 · ADR-0002, 0006, 0008, 0012 (Railway, since superseded by
+0016), 0013 (bot identity).
 
 **Tasks**
 - [x] Root `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json` (strict), ESLint flat
@@ -47,7 +50,8 @@ running server with a migrated database and a blank Mini App, and CI is green.
 - [x] `apps/miniapp`: Svelte 5 + Vite, Telegram SDK init, theme variables, router with a single
       "Hello, {name}" screen calling `GET /api/me`; `tma` auth header; dev auth bypass.
 - [x] `docker-compose.yml` (Postgres 16), `.env.example` documenting every variable of ARCH §13.
-- [x] `Dockerfile` multi-stage; `railway.json` (ADR-0012); migrations on boot.
+- [x] `Dockerfile` multi-stage; `railway.json` (ADR-0012); migrations on boot. _Replaced in
+      M2.5 by `wrangler.jsonc` and migrations from CI (ADR-0016); `railway.json` is already gone._
 - [x] `.github/workflows/ci.yml`: lint, typecheck, unit, integration (Postgres service), build.
 - [x] Update `CLAUDE.md` with the real commands; README "Getting started" section.
 - [x] Exclude `legacy/` from every tool (tsconfig, eslint, vitest, prettier).
@@ -133,11 +137,84 @@ access uses deployment credentials. `pnpm lint`, `pnpm typecheck`, `pnpm test` (
 
 ---
 
+## M2.5 — Free hosting: Cloudflare Workers, Durable Object, Neon
+
+**Goal.** The same application runs on the Workers Free plan and Neon's free Postgres, with no
+always-on process left in the code, and the dev loop, CI and e2e run against the real runtime
+(`wrangler dev`). Nothing user-visible changes.
+
+**Spec.** ARCH §1–§3, §7–§9, §13–§17 · PRD §12 · ADR-0016 (hosting), ADR-0017 (hub).
+
+**Tasks**
+- [ ] Accounts and bindings: Neon project (Frankfurt, `aws-eu-central-1`) with `production` and
+      `staging` branches; a Hyperdrive configuration per branch pointing at the pooled
+      connection string; `apps/server/wrangler.jsonc` with the assets, Hyperdrive and Durable
+      Object bindings, the `nodejs_compat` flag, `placement` in the database's region,
+      `observability.enabled`, the 15-minute heartbeat cron, and a `staging` environment.
+      Secrets with `wrangler secret put`; plain values as `vars`.
+- [ ] Worker entry `src/worker.ts`: `fetch` builds the deps per request (env from bindings, a
+      postgres.js client on `env.HYPERDRIVE.connectionString` closed in `waitUntil`) and mounts
+      the Hono app; `env.ts` takes a bindings object and loses `BOT_MODE`, `PORT`, `LOG_PRETTY`;
+      the Mini App is served by Static Assets (`single-page-application`, `run_worker_first` for
+      `/api/*`, `/telegram/*`, `/health`), so `app.ts` loses `serveStatic` and the SPA fallback.
+- [ ] `realtime/hub.ts`: Durable Object `AgroBotHub` (SQLite) with the `schedule(job, due_at)`
+      table and a single alarm; `wake()`, `ensureArmed()`, `runJob(name)`; next-occurrence math
+      in Europe/Madrid for periodic jobs; deadline lookups for dispatch/remind/expire; tests
+      under `@cloudflare/vitest-pool-workers` with a fake clock, including DST days.
+- [ ] Jobs on the hub: `notifications.dispatch` in batches of 20, immediate re-arm while rows
+      remain, retries at `next_attempt_at`; `catalog.sync` hourly and on demand (`/sync` and
+      `POST /admin/catalog/sync` await `hub.runJob`); delete `jobs/scheduler.ts`. Domain code
+      calls `hub.wake()` after commits that enqueue; integration tests keep calling the job
+      functions directly.
+- [ ] WebSocket hub: `POST /api/events/ticket` (random, single-use, 30 s, stored in the hub),
+      `GET /api/events?ticket=` upgrade with `Origin` check forwarded to the hub, Hibernation
+      API with member tags, `publish(memberIds, event)`, `isViewing`, per-member rate counters.
+      Mini App realtime store (one `WebSocket`, reconnect with backoff, `{viewing}` messages)
+      behind the same `refetch()` interface; `me.changed` on `PATCH /me` proves the path end to
+      end.
+- [ ] Replace `googleapis` with `integrations/google-sheets.ts` on `fetch` + WebCrypto (RS256
+      JWT → access token → `values.get`), same `CatalogSource` interface, tests with a mocked
+      `fetch`. Replace `pino` with the JSON console logger behind the existing `Logger` type.
+- [ ] Remove the Node runtime: `src/index.ts`, `@hono/node-server`, polling mode, `Dockerfile`,
+      `.dockerignore`. Keep `tsx` and `drizzle-kit` for `db:migrate`, `db:seed`, `db:generate`
+      and the scripts, which stay Node CLIs.
+- [ ] Dev loop: `pnpm dev` = `wrangler dev --port 8080` + `vite` + `scripts/dev-telegram.mjs`
+      (deletes the throwaway bot's webhook, long-polls `getUpdates`, POSTs each update to the
+      local webhook with the secret header); `scripts/set-webhook.mjs` as `pnpm bot:set-webhook`
+      for tunnels and production. One `.env`, read by wrangler, Vite and the scripts.
+- [ ] CI: `wrangler deploy --dry-run` inside `pnpm build`; e2e boots `wrangler dev` (local
+      Hyperdrive → `agrobot_test`) instead of `node dist/index.js`; a `deploy` job on `main`
+      after the checks runs `pnpm db:migrate` against Neon, `wrangler deploy --var GIT_COMMIT`,
+      then `pnpm bot:set-webhook`. Repository secrets: `CLOUDFLARE_API_TOKEN`,
+      `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+      `PUBLIC_URL`.
+- [ ] First deploy to the **staging** Worker with a throwaway bot and the Neon `staging`
+      branch: `/start`, approval from a quick action, a catalogue sync from a test sheet, one
+      realtime event, and the Neon console showing compute suspended between interactions.
+- [ ] Docs brought in line with what shipped: README getting started and deployment, AGENTS.md
+      commands, ARCH §13–§15; check ADR-0016/0017's consequences against reality and add a
+      new ADR if one turned out wrong.
+
+**Definition of done**
+- `pnpm install && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm dev` from a
+  clean clone following only the README: Mini App at `:5173`, Worker at `:8080`, `/start` on the
+  throwaway bot answered through the forwarder.
+- `pnpm lint typecheck test build e2e` green locally and in CI, e2e against `wrangler dev`.
+- Staging Worker on the Free plan: the M1 and M2 definitions of done hold end to end; a
+  catalogue sync and a notification fan-out to 25 test members complete inside the hub without
+  hitting the CPU or subrequest limits; the Neon console shows compute suspended between
+  interactions.
+- No `setInterval`/`setTimeout` schedule anywhere, and
+  `grep -ri "railway\|@hono/node-server\|googleapis\|pino" apps` finds nothing.
+
+---
+
 ## M3 — Offers and board
 
 **Goal.** Farmers publish surplus and everyone sees, live, what is available.
 
-**Spec.** PRD §7, US-3.1–3.4, N3, N10, N11 · ARCH §5 (offers), §6 offer machine, §7 SSE, §9 jobs, §11 (offers, board) · ADR-0009.
+**Spec.** PRD §7, US-3.1–3.4, N3, N10, N11 · ARCH §5 (offers), §6 offer machine, §7 realtime,
+§9 jobs, §11 (offers, board) · ADR-0009 (outbox), 0017 (hub).
 
 **Tasks**
 - [ ] `domain/offers`: publish (one active per producer+product, 409 with existing), edit with
@@ -146,12 +223,14 @@ access uses deployment credentials. `pnpm lint`, `pnpm typecheck`, `pnpm test` (
 - [ ] Board query (ARCH §5 derived rules) with grouping/search/category; integration tests for
       visibility rules (own offers hidden, suspended producer hidden, expired hidden, zero
       available hidden).
-- [ ] SSE hub + `GET /api/events`; `board.changed` emitted after offer changes; Mini App SSE
-      store with reconnect and refetch.
+- [ ] `board.changed` published through the hub after offer changes (the socket and the Mini
+      App realtime store exist since M2.5); the board store refetches on the event.
 - [ ] Notifications N3 (new/re-published) to all approved members except producer, respecting
-      `notify_new_offer`; deep link `o_<id>`.
-- [ ] Jobs `offers.expire` (daily 00:05 Europe/Madrid + boot) and `offers.nudge` (daily 09:00)
-      with quick actions `still:<id>` / `withdraw:<id>`; stale flag; N10; tests with fake clock.
+      `notify_new_offer`; deep link `o_<id>`. The fan-out is drained by the hub in batches
+      (ARCH §8), never sent from the request.
+- [ ] Jobs `offers.expire` (00:05 Europe/Madrid) and `offers.nudge` (09:00) registered in the
+      hub's schedule with their next-occurrence math (ADR-0017), quick actions `still:<id>` /
+      `withdraw:<id>`; stale flag; N10; tests with fake clock.
 - [ ] N11 reminder list on withdraw (lists open reservations; empty until M4).
 - [ ] Complete proposal-reject cascade from M2 (withdraw offers on the rejected product),
       and merge references on pending-product rename (ADR-0015; refuse overlapping active
@@ -182,13 +261,15 @@ deliver, cancel, reject or expire, with both parties informed.
       guard in the ARCH §6 table.
 - [ ] Concurrency integration test: N parallel reservations for the last unit, exactly one wins,
       others get `INSUFFICIENT_AVAILABILITY {available}`.
-- [ ] Jobs `reservations.remind` and `reservations.expire`; N7, N8; tests with fake clock.
+- [ ] Jobs `reservations.remind` and `reservations.expire` as deadline jobs: the hub's next
+      `due_at` comes from `min(expires_at − reminder)` / `min(expires_at)`, and every
+      reservation transaction ends with `hub.wake()`; N7, N8; tests with fake clock.
 - [ ] Quick actions `confirm:<id>` / `reject:<id>` from N6/N7 with stale-button handling.
 - [ ] `confirm-and-deliver` (producer, pending, one transaction, both system lines, one N8) in the
       domain and as a Mini App action only — never a quick action (ADR-0014).
 - [ ] System messages on every transition (thread table exists; rendering comes in M5).
-- [ ] API: `POST /reservations`, list by side/state, detail, four action endpoints; SSE
-      `reservation.changed`.
+- [ ] API: `POST /reservations`, list by side/state, detail, four action endpoints; realtime
+      event `reservation.changed`.
 - [ ] Mini App: reserve form in offer detail (quantity with unit step, total preview or "price
       pending", conflict handling "only 2 kg left, reserve that?"), Reservations screen
       (incoming/outgoing × active/closed), reservation detail with actions per role and
@@ -218,11 +299,12 @@ deliver, cancel, reject or expire, with both parties informed.
       and total; unit tests.
 - [ ] N9 with `dedupe_key` throttle; cleared on read; skipped when recipient is viewing the
       thread; integration tests for the burst behaviour.
-- [ ] SSE `message.new`; API messages (paginated `after`), read, presence.
+- [ ] Realtime event `message.new`; API messages (paginated `after`), read; presence as the
+      `{viewing}` socket message answered by `hub.isViewing` (ARCH §7).
 - [ ] Mini App: thread screen (context header with actions from M4, message list, composer with
       `MainButton`, optimistic send, system lines, read-only banner), unread badges on
       Reservations tab and rows, **Open in Telegram** when counterpart has a username.
-- [ ] `GET /me` returns unread totals; badge updates over SSE.
+- [ ] `GET /me` returns unread totals; badge updates over the socket.
 
 **Definition of done**
 - E2E with two contexts: messages appear on both sides within a second; closing one context and
@@ -235,7 +317,8 @@ deliver, cancel, reject or expire, with both parties informed.
 
 **Goal.** The group uses AgroBot 2.0 for real.
 
-**Spec.** PRD §10, §12, §13 · ARCH §15, §17 · ADR-0008 (deletion task), 0012, 0013 (cutover).
+**Spec.** PRD §10, §12, §13 · ARCH §15, §17 · ADR-0008 (deletion task), 0013 (cutover), 0016
+(hosting).
 
 **Tasks**
 - [ ] Admin → Settings screen with validation per key; settings read by jobs and domain at run
@@ -244,12 +327,17 @@ deliver, cancel, reject or expire, with both parties informed.
       report in CI, dependency review.
 - [ ] Sentry hook (optional by env), `/status` complete, structured error ids surfaced in toasts.
 - [ ] Full Playwright suite in CI (M1–M5 scenarios), flaky-test policy documented.
-- [ ] Production deploy: Railway project and Postgres (ADR-0012), secrets, Mini App short name on
-      the 1.0 bot, custom domain if any; backups verified by a restore drill; runbook in
-      `docs/runbook.md` (deploy, rollback, rotate bot token, re-sync catalogue, unstick a
-      notification).
-- [ ] Bot cutover (ADR-0013): stop 1.0, then register the 2.0 webhook on the same token — the two
-      can never run at once. Rollback is re-pointing the webhook at 1.0; rehearse it.
+- [ ] Production deploy (ADR-0016): the `agrobot` Worker with its secrets, the Neon
+      `production` branch and its Hyperdrive configuration, custom domain if any (`PUBLIC_URL`
+      follows), Mini App short name on the 1.0 bot pointing at `PUBLIC_URL`; restore drill
+      against staging: branch Neon at a timestamp inside the six-hour window, re-point the
+      staging Hyperdrive at it, verify the data; runbook in `docs/runbook.md` (deploy,
+      `wrangler rollback`, rotate bot token, re-sync catalogue, unstick a notification, re-arm
+      the hub, weekly free-plan budget check: Workers requests and CPU, hub requests and
+      duration, Hyperdrive queries, Neon CU-hours).
+- [ ] Bot cutover (ADR-0013): stop 1.0, then `pnpm bot:set-webhook` with the 1.0 token against
+      the production Worker — the two can never run at once. Rollback is re-pointing the
+      webhook at 1.0; rehearse it.
 - [ ] Pilot with the group: onboarding message, `Productes` tab prepared and shared with the
       service account (PRD §6), admins bootstrapped, one week of feedback triage into GitHub
       issues.
@@ -259,6 +347,8 @@ deliver, cancel, reject or expire, with both parties informed.
 **Definition of done**
 - 2.0 in production, all members of the group approved, catalogue synced from the real sheet.
 - CI green on `main`, e2e included; runbook followed once for a deploy and once for a rollback.
+- After the pilot week every free-plan figure in ARCH §15's budget table is under a quarter of
+  its cap, and Neon's monthly compute is on track for well under 100 CU-hours.
 - No open P1 issues after the pilot week.
 
 ---
@@ -268,10 +358,13 @@ deliver, cancel, reject or expire, with both parties informed.
 In the order we currently expect to want them; each one becomes a PRD section + ADR when
 picked up.
 
-1. Personal history beyond 30 days and per-farmer totals (data already there, ADR-0011).
-2. Settlement view and CSV export for admins.
-3. Daily digest mode for new-offer notifications.
-4. Photos on offers.
-5. Auto-expire stale offers after prolonged silence.
-6. Multiple offers of the same product per producer.
-7. Several groups per deployment.
+1. Nightly encrypted off-site database dump (GitHub Actions `pg_dump`, encrypted with `age`,
+   to a private Cloudflare R2 bucket, 10 GB free), if Neon's six-hour restore window ever
+   feels short (ADR-0016 accepted point-in-time restore alone).
+2. Personal history beyond 30 days and per-farmer totals (data already there, ADR-0011).
+3. Settlement view and CSV export for admins.
+4. Daily digest mode for new-offer notifications.
+5. Photos on offers.
+6. Auto-expire stale offers after prolonged silence.
+7. Multiple offers of the same product per producer.
+8. Several groups per deployment.

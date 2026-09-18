@@ -12,7 +12,9 @@ Mini App for the screens.
 source of truth. Milestones **M0 Foundation**, **M1 Identity and membership** and **M2 Catalogue**
 are done: the workspace runs, strangers apply with `/start`, admins approve from Telegram or the Mini App,
 products and prices sync from the sheet, members can propose missing products, and admins
-can review sync health. Every screen speaks Catalan and Spanish. The next milestone is M3 in
+can review sync health. Every screen speaks Catalan and Spanish. The next milestone is
+**M2.5**, the move to free hosting on Cloudflare Workers and Neon
+([ADR-0016](docs/adr/0016-hosting-on-cloudflare-workers-and-neon.md)), then M3 in
 [docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under
 [`legacy/`](legacy/README.md).
 
@@ -22,14 +24,30 @@ can review sync health. Every screen speaks Catalan and Spanish. The next milest
 | [docs/prd.md](docs/prd.md) | Product requirements: roles, principles, user stories, notifications, admin, NFRs |
 | [docs/architecture.md](docs/architecture.md) | Technical design: monorepo, auth, data model, state machines, API, jobs, deploy |
 | [docs/adr/](docs/adr/README.md) | Decision records with alternatives considered |
-| [docs/roadmap.md](docs/roadmap.md) | Milestones M0–M6 with tasks and definitions of done |
+| [docs/roadmap.md](docs/roadmap.md) | Milestones M0–M6 (plus M2.5, the hosting move) with tasks and definitions of done |
 | [docs/legacy-review.md](docs/legacy-review.md) | What 1.0 did and the lessons carried forward |
 
 ## Stack (2.0)
 
 TypeScript everywhere · pnpm workspace · **grammY** (bot) · **Hono** (API) · **Drizzle** on
-**Postgres** · **Svelte 5 + Vite** Mini App · Vitest + Playwright · one container on
-**Railway** with Railway Postgres ([ADR-0012](docs/adr/0012-hosting-on-railway.md)).
+**Postgres** · **Svelte 5 + Vite** Mini App · Vitest + Playwright · **Cloudflare Workers** with
+one **Durable Object** for jobs and realtime, **Neon Postgres** through Hyperdrive, all on free
+plans ([ADR-0016](docs/adr/0016-hosting-on-cloudflare-workers-and-neon.md),
+[ADR-0017](docs/adr/0017-durable-object-for-jobs-and-realtime.md)).
+
+## Deployment
+
+Production is one Worker plus one Durable Object on the Workers Free plan and a Neon free
+Postgres reached through Hyperdrive. There is no container and no always-on process: jobs run
+from the Durable Object's alarm when something is due, the Mini App gets live updates over a
+WebSocket held by the same object, and GitHub Actions applies migrations and runs
+`wrangler deploy` on every push to `main`. Backups are Neon's six-hour point-in-time restore.
+The design, the free-plan budget and the deploy steps are in
+[docs/architecture.md §15](docs/architecture.md#15-build-ci-deployment).
+
+**Until roadmap M2.5 lands, the code still runs as one Node process** with a polling bot and
+an in-process scheduler; the getting-started steps below describe that current state. M2.5
+lists every change, including the new `pnpm dev` internals.
 
 ## Getting started
 

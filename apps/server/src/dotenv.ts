@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
  * Load the repository's `.env` if there is one, so `pnpm dev`, `pnpm db:migrate` and
  * `pnpm db:seed` behave the same whether they are run from the root or from `apps/server`.
  *
- * Real deployments set variables in the environment (ARCH §13, ADR-0012) and have no `.env`;
- * this is a no-op there.
+ * Real deployments get variables from the Worker's vars and secrets (ARCH §13, ADR-0016) and
+ * have no `.env`; this is a no-op there.
  */
 export function loadDotEnv(): void {
   if (process.env['SKIP_DOTENV'] === '1') return;
