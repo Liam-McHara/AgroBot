@@ -10,15 +10,20 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "build": "pnpm -r build",
-    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "build": "pnpm --filter @agrobot/shared build && pnpm --filter @agrobot/miniapp build && pnpm --filter @agrobot/server build",
     "build:shared": "pnpm --filter @agrobot/shared build",
     "typecheck": "pnpm run build:shared && pnpm -r typecheck && tsc -p e2e/tsconfig.json",
     "test": "pnpm run build:shared && pnpm -r test",
     "lint": "eslint . && prettier --check . && pnpm run i18n:check",
     "format": "prettier --write .",
     "i18n:check": "node scripts/check-i18n.mjs",
-    "dev": "pnpm run build:shared && pnpm -r --parallel --stream dev",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "dev": "pnpm run build:shared && pnpm run --parallel --stream \"/^dev:/\"",
+    "dev:shared": "pnpm --filter @agrobot/shared dev",
+    "dev:worker": "pnpm --filter @agrobot/server dev",
+    "dev:miniapp": "pnpm --filter @agrobot/miniapp dev",
+    "dev:telegram": "node scripts/dev-telegram.mjs",
+    "bot:set-webhook": "node scripts/set-webhook.mjs",
     "db:migrate": "pnpm run build:shared && pnpm --filter @agrobot/server db:migrate",
     "db:seed": "pnpm run build:shared && pnpm --filter @agrobot/server db:seed",
     "db:generate": "pnpm run build:shared && pnpm --filter @agrobot/server db:generate"
