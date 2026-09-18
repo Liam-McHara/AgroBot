@@ -201,9 +201,9 @@ always-on process left in the code, and the dev loop, CI and e2e run against the
       branch: `/start`, approval from a quick action, a catalogue sync from a test sheet, one
       realtime event, and the Neon console showing compute suspended between interactions.
       _Blocked on the accounts task above; push to `staging` once it is done._
-- [x] Docs brought in line with what shipped: README getting started and deployment, AGENTS.md
-      commands (and a `CLAUDE.md` that imports it), ARCH §2–§4, §7, §9, §11, §13–§16; ADR-0016
-      and ADR-0017's consequences checked against the code and found to hold, so no new ADR.
+- [x] Docs brought in line with what shipped: README getting started and deployment, CLAUDE.md
+      commands, ARCH §2–§4, §7, §9, §11, §13–§16; ADR-0016 and ADR-0017's consequences
+      checked against the code and found to hold, so no new ADR.
 
 **Definition of done**
 - `pnpm install && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm dev` from a

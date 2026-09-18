@@ -85,7 +85,7 @@ beyond one hub instance is out of scope, as one process was before.
 ├── docker-compose.yml          # local Postgres (development and tests only)
 ├── .github/workflows/ci.yml    # checks on every PR; deploy job on main and staging (§15)
 ├── package.json, pnpm-workspace.yaml, tsconfig.base.json, eslint.config.js
-└── AGENTS.md, README.md, .env.example
+└── CLAUDE.md, README.md, .env.example
 ```
 
 Rules of dependency: `miniapp` and `server` depend on `shared`; nothing depends on `legacy`.
