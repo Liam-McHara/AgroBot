@@ -6,17 +6,17 @@ import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import { TelegramSendError, type TelegramSender } from '../integrations/telegram-api.js';
 import { isRenderableKind, renderNotification } from '../bot/notifications/render.js';
-import type { JobReport } from './scheduler.js';
+import type { JobReport } from './types.js';
 
 /**
  * ARCH §8 step 2, ADR-0009: the only code that turns outbox rows into Telegram messages.
  *
- * Batches of 20 are locked with `FOR UPDATE SKIP LOCKED`, rendered in the recipient's
- * language and sent one by one. A send that fails is retried with exponential backoff
+ * Batches of 20 (under the 50 subrequests a free-plan invocation may make, ADR-0017) are
+ * locked with `FOR UPDATE SKIP LOCKED`, rendered in the recipient's language and sent one by
+ * one; the hub runs it again at once when a batch was full. A send that fails is retried with exponential backoff
  * (1 m, 5 m, 30 m) and then marked `failed`; a 429 waits exactly what Telegram asked and does
  * not count as an attempt; a recipient who blocked the bot is `failed` at once.
  */
-export const DISPATCH_EVERY_MS = 2_000;
 export const DISPATCH_BATCH_SIZE = 20;
 
 export interface DispatchDeps {
