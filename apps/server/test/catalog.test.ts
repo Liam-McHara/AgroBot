@@ -14,8 +14,7 @@ import { createCatalogService } from '../src/domain/catalog/service.js';
 import { catalogLifecycle } from '../src/domain/catalog/lifecycle.js';
 import { createCsvCatalogSource } from '../src/integrations/csv-catalog.js';
 import { createApp } from '../src/http/app.js';
-import { createScheduler } from '../src/jobs/scheduler.js';
-import { registerCatalogSync, syncCatalogOnBoot } from '../src/jobs/catalog-sync.js';
+import { jobs } from '../src/jobs/index.js';
 import { adminCatalogSchema, productsResponseSchema } from '@agrobot/shared';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 import { testDeps } from './helpers/app.js';
@@ -325,24 +324,50 @@ suite('catalogue: real Postgres (US-2.1, US-2.2)', () => {
     await Promise.all([first, second]);
     expect((await rows())[0]?.priceCents).toBe(200);
   });
-  it('runs on boot only before the first attempt, then through the hourly job', async () => {
-    const scheduler = createScheduler(testDeps(database!).logger);
-    const catalog = service();
-    registerCatalogSync(scheduler, catalog);
-    await syncCatalogOnBoot(scheduler, catalog);
-    await syncCatalogOnBoot(scheduler, catalog);
-    expect(fetchRows).toHaveBeenCalledTimes(1);
-    await scheduler.runNow('catalog.sync');
+  it('runs as the hub job: scheduled runs, manual runs with the actor, next due at minute 7', async () => {
+    const deps = testDeps(database!, {}, { source });
+    const jobDeps = { ...deps.jobDeps, now: () => new Date('2026-07-01T10:30:00Z') };
+    const scheduled = await jobs['catalog.sync'].run(jobDeps, undefined);
+    expect(scheduled.result).toMatchObject({ trigger: 'schedule', status: 'ok', created: 2 });
+    expect(scheduled.nextDueAt?.toISOString()).toBe('2026-07-01T11:07:00.000Z');
+    const manual = await jobs['catalog.sync'].run(jobDeps, {
+      trigger: 'manual',
+      actorId: admin.id,
+    });
+    expect(manual.result).toMatchObject({ trigger: 'manual', triggeredBy: admin.id });
+    // The actor is re-read and re-authorized by the domain, not trusted from the caller.
+    await expect(
+      jobs['catalog.sync'].run(jobDeps, { trigger: 'manual', actorId: farmer.id }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      jobs['catalog.sync'].run(jobDeps, {
+        trigger: 'command',
+        actorId: '00000000-0000-4000-8000-000000000000',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(fetchRows).toHaveBeenCalledTimes(2);
     expect(await database!.db.select().from(catalogSyncs)).toMatchObject([
       { trigger: 'schedule' },
-      { trigger: 'schedule' },
+      { trigger: 'manual' },
     ]);
+  });
+  it('wakes the hub after commits that enqueue notifications (ARCH §8 step 2)', async () => {
+    const deps = testDeps(database!, {}, { source });
+    await deps.catalog.sync({ trigger: 'schedule' });
+    expect(deps.hub.wakes).toBe(0);
+    await deps.catalog.propose(farmer, { name: 'Proposta', unitCode: 'kg' });
+    expect(deps.hub.wakes).toBe(1);
+    cells = [header];
+    await deps.catalog.sync({ trigger: 'schedule' });
+    expect(deps.hub.wakes).toBe(2);
+    cells = [header, ['Tomàquet', 'kg', '2,35'], ['Ous', 'dozen', '3.10'], ['Proposta', 'kg', 1]];
+    expect(await deps.catalog.sync({ trigger: 'schedule' })).toMatchObject({ resolvedPending: 1 });
+    expect(deps.hub.wakes).toBe(3);
   });
 
   it('serves typed routes, validates input and keeps applicants/non-admins out', async () => {
-    const deps = testDeps(database!, { DEV_AUTH_BYPASS_TELEGRAM_ID: '900000001' });
-    const app = createApp({ ...deps, catalog: service() });
+    const deps = testDeps(database!, { DEV_AUTH_BYPASS_TELEGRAM_ID: '900000001' }, { source });
+    const app = createApp(deps);
     const request = (path: string, telegramId = 900000001, body?: unknown) =>
       app.request(`/api${path}`, {
         method: body === undefined ? 'GET' : 'POST',

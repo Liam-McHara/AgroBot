@@ -11,6 +11,7 @@ import {
   validationFailed,
 } from '../../errors.js';
 import { enqueueNotification, enqueueNotifications } from '../notifications/outbox.js';
+import { noopHub, type HubPort } from '../ports.js';
 import {
   applyMemberAction,
   displayNameFrom,
@@ -30,6 +31,8 @@ export interface MembersServiceDeps {
   db: Database;
   /** ARCH §13 `ADMIN_TELEGRAM_IDS`: approved as admins the moment they show up. */
   adminTelegramIds: readonly string[];
+  /** ADR-0017: woken after commits that enqueue, told after commits members should see. */
+  hub?: HubPort;
   now?: () => Date;
 }
 
@@ -61,6 +64,7 @@ export function assertAdmin(member: Member): void {
 
 export function createMembersService(deps: MembersServiceDeps) {
   const now = deps.now ?? (() => new Date());
+  const hub = deps.hub ?? noopHub;
 
   async function findOpenInvite(
     tx: Executor,
@@ -107,7 +111,7 @@ export function createMembersService(deps: MembersServiceDeps) {
    * Mini App.
    */
   async function identify(identity: TelegramIdentity): Promise<IdentifyResult> {
-    return deps.db.transaction(async (tx) => {
+    const result = await deps.db.transaction(async (tx) => {
       const at = now();
       const invite = await findOpenInvite(tx, identity);
       const autoApproval = resolveAutoApproval(identity, {
@@ -203,6 +207,9 @@ export function createMembersService(deps: MembersServiceDeps) {
 
       return { member, created, autoApproved };
     });
+    // ARCH §8 step 2: N1 is committed with the applicant row; the hub drains it within a second.
+    if (result.created && !result.autoApproved) hub.wake();
+    return result;
   }
 
   async function lockMemberByTelegramId(tx: Executor, telegramId: number): Promise<Member> {
@@ -222,7 +229,7 @@ export function createMembersService(deps: MembersServiceDeps) {
    */
   async function act(actor: Member, memberId: string, action: MemberAction): Promise<Member> {
     assertAdmin(actor);
-    return deps.db.transaction(async (tx) => {
+    const member = await deps.db.transaction(async (tx) => {
       const at = now();
       // Every approved admin is locked while we count them, so two parallel demotions
       // cannot both see "two admins left".
@@ -267,6 +274,10 @@ export function createMembersService(deps: MembersServiceDeps) {
       }
       return member;
     });
+    if (action === 'approve' || action === 'reject') hub.wake();
+    // ARCH §7: their open Mini App refetches `/me` and shows the new status or role at once.
+    hub.publish([member.id], { type: 'me.changed' });
+    return member;
   }
 
   /** US-1.5: language and display name are the member's to change. */
@@ -284,6 +295,8 @@ export function createMembersService(deps: MembersServiceDeps) {
       })
       .where(eq(members.id, member.id))
       .returning();
+    // ARCH §7: `me.changed` on `PATCH /me` is what proves the realtime path end to end.
+    hub.publish([member.id], { type: 'me.changed' });
     return updated ?? member;
   }
 
@@ -338,7 +351,7 @@ export function createMembersService(deps: MembersServiceDeps) {
     const identifier = parseInviteIdentifier(rawIdentifier);
     if (!identifier) throw validationFailed({ field: 'identifier' });
 
-    return deps.db.transaction(async (tx) => {
+    const { view, approved } = await deps.db.transaction(async (tx) => {
       const at = now();
       const [existingMember] = await tx
         .select()
@@ -387,8 +400,13 @@ export function createMembersService(deps: MembersServiceDeps) {
       }
 
       const [view] = await inviteViews(tx, invite.id);
-      return view!;
+      return { view: view!, approved: existingMember ? existingMember.id : null };
     });
+    if (approved) {
+      hub.wake();
+      hub.publish([approved], { type: 'me.changed' });
+    }
+    return view;
   }
 
   async function deleteInvite(actor: Member, inviteId: string): Promise<void> {

@@ -47,7 +47,11 @@ export function catalogRoutes(deps: AppDeps): Hono<AppContext> {
     return c.json(adminCatalogSchema.parse({ ...result, syncs: result.syncs.map(toCatalogSync) }));
   });
   app.post('/admin/catalog/sync', async (c) => {
-    const sync = await deps.catalog.sync({ trigger: 'manual', actor: c.get('member')! });
+    // ARCH §10: the sync runs in the hub (30 s of CPU), never in this request; we await it.
+    const sync = await deps.hub.runJob('catalog.sync', {
+      trigger: 'manual',
+      actorId: c.get('member')!.id,
+    });
     // A failed source is still a completed attempt with a report for the admin to inspect.
     return c.json({ sync: toCatalogSync(sync) });
   });

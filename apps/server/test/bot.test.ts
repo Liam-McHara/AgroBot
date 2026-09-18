@@ -2,7 +2,6 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { InlineKeyboardMarkup, Update, UserFromGetMe } from 'grammy/types';
 import { eq } from 'drizzle-orm';
 import { members, notifications } from '../src/db/schema/index.js';
-import { createCatalogService } from '../src/domain/catalog/service.js';
 import { createBot } from '../src/bot/index.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 import { testDeps } from './helpers/app.js';
@@ -39,11 +38,10 @@ interface SentCall {
  */
 function botUnderTest() {
   const sent: SentCall[] = [];
-  const deps = testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) });
-  const bot = createBot({
-    ...deps,
-    catalog: createCatalogService({
-      db: database!.db,
+  const deps = testDeps(
+    database!,
+    { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) },
+    {
       source: {
         kind: 'csv',
         sheetUrl: 'https://example.test/catalog.csv',
@@ -52,15 +50,16 @@ function botUnderTest() {
           ['Tomàquet', 'kg', '2.35'],
         ],
       },
-    }),
-  });
+    },
+  );
+  const bot = createBot(deps);
   bot.botInfo = BOT_INFO;
   bot.api.config.use(async (_prev, method, payload) => {
     sent.push({ method, payload: payload as Record<string, unknown> });
     return { ok: true, result: { message_id: sent.length } } as never;
   });
   const last = (method: string) => sent.filter((call) => call.method === method).at(-1);
-  return { bot, sent, last };
+  return { bot, sent, last, hub: deps.hub };
 }
 
 interface From {
@@ -162,7 +161,7 @@ suite('bot', () => {
     });
 
     it('tells a stranger the request was sent and queues N1 for the admins', async () => {
-      const { bot, last } = botUnderTest();
+      const { bot, last, hub } = botUnderTest();
       await bot.handleUpdate(start(ADMIN));
       await bot.handleUpdate(start(MARTA));
 
@@ -178,6 +177,8 @@ suite('bot', () => {
         .where(eq(notifications.memberId, admin.id));
       expect(queued).toHaveLength(1);
       expect(queued[0]).toMatchObject({ kind: 'N1', payload: { applicantId: marta!.id } });
+      // ARCH §8 step 2: the commit that enqueued N1 woke the hub.
+      expect(hub.wakes).toBe(1);
     });
 
     it('repeats the waiting message on a second /start without a second N1', async () => {
@@ -250,7 +251,7 @@ suite('bot', () => {
     }
 
     it('approves from the button, edits the message and queues N2', async () => {
-      const { bot, last } = botUnderTest();
+      const { bot, last, hub } = botUnderTest();
       await bot.handleUpdate(start(ADMIN));
       await bot.handleUpdate(start(MARTA));
       const id = await applicantId();
@@ -269,6 +270,9 @@ suite('bot', () => {
         .where(eq(notifications.memberId, id));
       expect(n2).toHaveLength(1);
       expect(n2[0]).toMatchObject({ kind: 'N2', payload: { decision: 'approved' } });
+      // N1 and N2 each woke the hub; the approval also told Marta's open Mini App.
+      expect(hub.wakes).toBe(2);
+      expect(hub.published).toContainEqual({ memberIds: [id], event: { type: 'me.changed' } });
     });
 
     it('rejects from the button', async () => {

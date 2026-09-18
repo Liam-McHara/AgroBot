@@ -1,7 +1,6 @@
-import { sql } from 'drizzle-orm';
 import { createDatabase, type DatabaseHandle } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { seed } from '../../src/db/seed.js';
+import { resetTestData } from '../../src/db/reset-test-database.js';
 
 /**
  * Integration tests run against a real Postgres (ARCH §16). Locally that is the
@@ -11,19 +10,6 @@ import { seed } from '../../src/db/seed.js';
  */
 export const TEST_DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ?? 'postgres://agrobot:agrobot@localhost:5432/agrobot_test';
-
-/** Tables that hold test data, in an order safe for a single `TRUNCATE`. */
-const DATA_TABLES = [
-  'notifications',
-  'thread_reads',
-  'messages',
-  'reservations',
-  'offers',
-  'products',
-  'catalog_syncs',
-  'member_invites',
-  'members',
-];
 
 let handle: DatabaseHandle | null | undefined;
 
@@ -50,13 +36,7 @@ export async function openTestDatabase(): Promise<DatabaseHandle | null> {
   return handle;
 }
 
-/**
- * Empties the data tables and re-seeds the reference data between tests, dev members
- * included: they are what the dev-auth bypass signs in as (ARCH §14).
- */
+/** Empties the data tables and re-seeds the reference data between tests (ARCH §16). */
 export async function resetDatabase(database: DatabaseHandle): Promise<void> {
-  await database.db.execute(
-    sql.raw(`truncate table ${DATA_TABLES.join(', ')} restart identity cascade`),
-  );
-  await seed(database.db, { includeDevMembers: true });
+  await resetTestData(database.db);
 }

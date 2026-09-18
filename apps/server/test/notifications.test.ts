@@ -1,10 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { pino } from 'pino';
 import { members, notifications } from '../src/db/schema/index.js';
 import { enqueueNotification } from '../src/domain/notifications/outbox.js';
 import { dispatchNotifications } from '../src/jobs/notifications-dispatch.js';
 import { TelegramSendError, type SendMessageInput } from '../src/integrations/telegram-api.js';
+import { silentLogger } from '../src/logger.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 
 const database = await openTestDatabase();
@@ -39,7 +39,7 @@ async function member(telegramId: number, language: 'ca' | 'es') {
 }
 
 suite('notifications.dispatch (ARCH §8)', () => {
-  const logger = pino({ level: 'silent' });
+  const logger = silentLogger;
 
   beforeEach(async () => {
     await resetDatabase(database!);
