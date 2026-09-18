@@ -1,4 +1,4 @@
-# AGENTS.md — working in the AgroBot repository
+# CLAUDE.md — working in the AgroBot repository
 
 AgroBot is a private tool for a group of farmers to share surplus produce: a Telegram bot plus
 a Telegram Mini App backed by one Cloudflare Worker, one Durable Object and a Neon Postgres,
