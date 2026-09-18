@@ -1,6 +1,8 @@
 # ADR-0009: Transactional notification outbox and SSE for realtime
 
-- Status: Accepted
+- Status: Accepted. The SSE realtime transport is superseded by
+  [ADR-0017](0017-durable-object-for-jobs-and-realtime.md) (2026-09-18); the transactional
+  outbox stands.
 - Date: 2026-09-17
 
 ## Context

@@ -1,6 +1,8 @@
 # ADR-0002: One Node service and a managed Postgres
 
-- Status: Accepted
+- Status: Accepted. The *single always-on container* is superseded by
+  [ADR-0016](0016-hosting-on-cloudflare-workers-and-neon.md) (2026-09-18); the *one managed
+  Postgres* stands.
 - Date: 2026-09-17
 
 ## Context

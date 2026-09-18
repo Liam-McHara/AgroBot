@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Draft for implementation** (decisions taken 2026-09-17, see [ADRs](adr/README.md)) |
+| Status | **Draft for implementation** (decisions taken 2026-09-17, hosting revised 2026-09-18, see [ADRs](adr/README.md)) |
 | Owner | Guillem (product), implementation via Claude Code sessions |
 | Related | [architecture.md](architecture.md) · [roadmap.md](roadmap.md) · [legacy-review.md](legacy-review.md) |
 
@@ -216,7 +216,7 @@ wait for an admin before publishing surplus.
   *price pending*), producer display name, *available until* if set, a *stale* marker if the
   offer is unconfirmed (US-3.4).
 - Group by product (default) or by producer; text search; filter by category.
-- Refreshes live while open (SSE); pull-to-refresh as fallback.
+- Refreshes live while open (WebSocket, ADR-0017); pull-to-refresh as fallback.
 
 ### US-3.4 Offers do not go stale silently
 - Offers past their *available until* date become **expired** at the start of the next day
@@ -281,7 +281,7 @@ when and where, with the details always in front of us.
 - Header always shows: product, quantity + unit, unit price and total (or *price pending*),
   status, counterpart's display name, and the reservation's actions available to me.
 - Text messages, 1–2000 chars. Sent messages appear instantly for both if both are online
-  (SSE); otherwise the recipient gets **one** Telegram notification per unread burst (no new
+  (WebSocket); otherwise the recipient gets **one** Telegram notification per unread burst (no new
   notification until they open the thread), with an *Open* button that deep-links to the thread.
 - Status changes appear as system lines in the thread ("Marta confirmed the reservation").
 - The thread is writable while the reservation is active and for `thread_readonly_days_after_close`
@@ -356,16 +356,17 @@ Kept in the data model where cheap (price snapshots, timestamps) so they can be 
 
 | Area | Requirement |
 |---|---|
-| Scale | ≤ 100 members, ≤ 500 active offers, ≤ 50 reservations/day. Single instance. |
-| Latency | Board and reservation actions < 500 ms server time on the target hosting; chat message fan-out < 1 s. |
-| Availability | Best effort. A restart loses nothing (all state in Postgres; Telegram retries webhooks). |
-| Security | Mini App requests authenticated via Telegram `initData` HMAC with the bot token, `auth_date` ≤ 24 h. Webhook protected by secret token. All authorization server-side. Secrets only via environment. |
+| Scale | ≤ 100 members, ≤ 500 active offers, ≤ 50 reservations/day. Request-driven Worker plus exactly one Durable Object instance for jobs and realtime (ADR-0017). |
+| Latency | Board and reservation actions < 500 ms server time on the target hosting, excluding the database wake-up after five idle minutes (about 0.5–1 s on Neon's free plan, ADR-0016); chat message fan-out < 1 s. |
+| Availability | Best effort. A deploy loses nothing: all state in Postgres, sockets reconnect, alarms persist, Telegram retries webhooks. |
+| Cost | Zero. Every component runs within the Workers Free plan and Neon's Free plan (ADR-0016); the runbook checks the daily caps and the Workers Paid plan is the documented escape hatch. |
+| Security | Mini App requests authenticated via Telegram `initData` HMAC with the bot token, `auth_date` ≤ 24 h. Webhook protected by secret token. Realtime socket opened with a single-use 30 s ticket, never with `initData` in a URL. All authorization server-side. Secrets only as Worker secrets or the local `.env`. |
 | Privacy | Stored personal data: Telegram id, username, first/last name, chosen display name, language. Threads visible only to the two parties. No analytics trackers. |
 | i18n | `ca` and `es` complete at every release; missing key fails the build. Dates and numbers formatted per locale; timezone Europe/Madrid for display; UTC in storage. Currency EUR. |
 | Accessibility / UX | Mobile-first, follows Telegram theme colours (light/dark), touch targets ≥ 44 px, works on the Telegram desktop client too. |
-| Observability | Structured JSON logs, request ids, `/health` endpoint, error tracking hook (Sentry-compatible, optional). |
-| Quality | Strict TypeScript, lint, unit tests for domain rules, integration tests against real Postgres, e2e tests of the main flows, CI required on every PR. |
-| Data | Nothing is hard-deleted except by explicit admin action on rejected products; everything else is status-based. Daily managed backups on the hosting provider. |
+| Observability | Structured JSON logs with request ids in Workers Logs (3 days of retention on the free plan), `/health` endpoint, error tracking hook (Sentry-compatible, optional). |
+| Quality | Strict TypeScript, lint, unit tests for domain rules, integration tests against real Postgres, e2e tests of the main flows against the real runtime (`wrangler dev`), CI required on every PR. |
+| Data | Nothing is hard-deleted except by explicit admin action on rejected products; everything else is status-based. Backups are Neon's point-in-time restore, a six-hour window on the free plan and no off-site copy (ADR-0016); the M6 restore drill proves it. |
 
 ## 13. Open questions
 
@@ -376,7 +377,7 @@ governs, and the rows were deleted per the workflow in `docs/README.md`. Where t
 |---|---|---|
 | Q1 | Exact Google Sheet: id, tab name, columns. | New tab `Productes` with the columns in §6. Id is deployment config (`GOOGLE_SHEET_ID`, ARCH §13). |
 | Q2 | Sheet access: service account or published CSV. | Service account; CSV kept as fallback. §6, ARCH §11. |
-| Q3 | Hosting provider. | Railway app + Railway Postgres. ARCH §15, ADR-0012. |
+| Q3 | Hosting provider. | Cloudflare Workers + one Durable Object, Neon Postgres through Hyperdrive, all on free plans. ARCH §15, ADR-0016 (supersedes ADR-0012), ADR-0017. |
 | Q4 | Bot username and Mini App short name. | Reuse AgroBot 1.0's bot and token; 1.0 stops before 2.0 goes live. ARCH §13, ADR-0013. |
 | Q5 | Quantity steps: constants or configurable. | Per-unit constants, as specified in §7 US-3.1. |
 | Q6 | Producer *confirm and deliver* in one tap. | Yes, but only in the Mini App. §8 US-4.4, ARCH §6, ADR-0014. |

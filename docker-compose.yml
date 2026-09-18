@@ -1,5 +1,5 @@
 # Local Postgres for development and integration tests (ARCH §14).
-# Production uses Railway Postgres (ADR-0012); nothing here ships in the image.
+# Production uses Neon Postgres through Hyperdrive (ADR-0016); nothing here is deployed.
 services:
   postgres:
     image: postgres:16-alpine

@@ -9,9 +9,11 @@ when code and documents disagree, one of them is a bug and the fix lands in the 
 2. [prd.md](prd.md) — product requirements: vision, principles, user stories with acceptance
    criteria, notifications, admin area, non-functional requirements, open questions.
 3. [architecture.md](architecture.md) — how it is built: layout, libraries, auth, data model,
-   state machines, realtime, outbox, jobs, sync, API, Mini App, config, dev loop, CI, tests.
+   state machines, realtime, outbox, jobs, sync, API, Mini App, config, dev loop, CI, deploy
+   and free-plan budget, tests.
 4. [adr/](adr/README.md) — why each big decision was taken and what was rejected.
-5. [roadmap.md](roadmap.md) — the plan: milestones M0–M6 with tasks and definitions of done.
+5. [roadmap.md](roadmap.md) — the plan: milestones M0–M6 (with M2.5, the move to free hosting)
+   with tasks and definitions of done.
 
 ## The spec-driven workflow
 
@@ -55,7 +57,10 @@ Paste something like this as the first message (adjust the milestone):
 > tell me what you changed.
 
 For M1 onwards add: "M0 is merged on `main`; build on it." The session should re-read the
-spec sections the milestone lists under **Spec.** before writing code.
+spec sections the milestone lists under **Spec.** before writing code. From M2.5 onwards the
+runtime is Cloudflare Workers ([ADR-0016](adr/0016-hosting-on-cloudflare-workers-and-neon.md)):
+a session should also read `apps/server/wrangler.jsonc` and check that nothing it adds polls
+the database on a timer or does more than one member's work in a request handler.
 
 ## Conventions for these documents
 

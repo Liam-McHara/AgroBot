@@ -6,34 +6,37 @@ in [adr/](adr/README.md); this document states what we build and how the pieces 
 ## 1. Overview
 
 ```
-                    Telegram servers
-                 ┌─────────┴──────────┐
-        webhook  │                    │  Mini App web view
-        (bot)    ▼                    ▼  (HTTPS)
-┌──────────────────────────────────────────────────────────┐
-│  apps/server  (one Node 22 process, one container)       │
-│                                                          │
-│  Hono HTTP                                               │
-│   ├─ POST /telegram/webhook   → grammY bot (commands,    │
-│   │                              quick-action callbacks) │
-│   ├─ /api/*                   → REST JSON for Mini App   │
-│   ├─ GET /api/events          → SSE stream per member    │
-│   ├─ GET /health                                         │
-│   └─ /*                       → static Mini App build    │
-│                                                          │
-│  Domain services (pure TS) ── Drizzle ORM ── Postgres    │
-│  Jobs (in-process scheduler):                            │
-│   catalog sync · reservation expiry/reminders ·          │
-│   offer expiry/nudges · notification outbox dispatcher   │
-└──────────────────────────────────────────────────────────┘
+                    Telegram servers                      Mini App web view
+                 ┌─────────┴──────────┐                   (HTTPS + WebSocket)
+        webhook  │                    │                          │
+        (bot)    ▼                    ▼                          ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  apps/server on Cloudflare Workers: one Worker + one Durable Object       │
+│                                                                           │
+│  Worker `fetch` (Hono; request-scoped; 10 ms CPU)                         │
+│   ├─ POST /telegram/webhook    → grammY bot (commands, quick actions)     │
+│   ├─ /api/*                    → REST JSON for the Mini App               │
+│   ├─ POST /api/events/ticket · GET /api/events → WebSocket, to the hub    │
+│   ├─ GET /health                                                          │
+│   └─ everything else           → Mini App build (Static Assets, free)     │
+│                                                                           │
+│  Durable Object `AgroBotHub` (one instance; SQLite storage; 30 s CPU)     │
+│   ├─ alarm(): jobs when due — outbox dispatch · reservation reminders and │
+│   │           expiry · offer expiry and nudges · catalogue sync           │
+│   └─ WebSocket hub (hibernating sockets tagged by member) · presence ·    │
+│       rate counters                                                       │
+│                                                                           │
+│  Domain services (pure TS) ── Drizzle ORM ── Hyperdrive ──► Neon Postgres │
+└───────────────────────────────────────────────────────────────────────────┘
                               │
-                 Google Sheets API (service account)
+                 Google Sheets API (service account, fetch + WebCrypto JWT)
                  or published CSV URL
 ```
 
-One deployable unit. No queue, no cache server, no second process. Scaling beyond one
-instance is out of scope and the only place it would matter (SSE fan-out) is isolated behind
-an interface (§7).
+One deployable unit (`wrangler deploy`), all on free plans (ADR-0016). No queue, no cache
+server, no process to keep alive. A request handler does one member's work; anything longer
+(a fan-out, the catalogue sync) runs in the hub, the only long-lived thing (ADR-0017). Scaling
+beyond one hub instance is out of scope, as one process was before.
 
 ## 2. Repository layout (pnpm workspace)
 
@@ -42,8 +45,8 @@ an interface (§7).
 ├── apps/
 │   ├── server/                 # Hono + grammY + Drizzle + jobs
 │   │   ├── src/
-│   │   │   ├── index.ts        # bootstrap: env, db, bot, http, jobs
-│   │   │   ├── env.ts          # zod-validated process.env
+│   │   │   ├── worker.ts       # Worker entry: fetch → Hono app; exports the AgroBotHub class
+│   │   │   ├── env.ts          # zod-validated bindings (vars, secrets, Hyperdrive)
 │   │   │   ├── db/             # drizzle schema, migrations, client, seeds
 │   │   │   ├── domain/         # one folder per aggregate: members, catalog, offers,
 │   │   │   │                   #   reservations, threads, notifications, settings
@@ -51,19 +54,19 @@ an interface (§7).
 │   │   │   ├── http/           # Hono app, middlewares (auth, errors, logging), routes
 │   │   │   ├── bot/            # grammY: commands, callback (quick action) handlers,
 │   │   │   │                   #   notifications/ (renderers per kind), deep links
-│   │   │   ├── jobs/           # scheduler + job implementations
-│   │   │   ├── integrations/   # google-sheets.ts, csv-catalog.ts, telegram-api.ts
-│   │   │   ├── realtime/       # SSE hub
+│   │   │   ├── jobs/           # job functions + next-due math; the hub calls them
+│   │   │   ├── integrations/   # google-sheets.ts (fetch + WebCrypto), csv-catalog.ts, telegram-api.ts
+│   │   │   ├── realtime/       # hub.ts: the Durable Object (schedule, sockets, presence, counters)
 │   │   │   └── i18n/           # server-side t() bound to member language
 │   │   ├── test/               # integration tests (real Postgres)
-│   │   └── Dockerfile
+│   │   └── wrangler.jsonc      # Worker config: assets, Hyperdrive, DO, cron, vars (ADR-0016)
 │   └── miniapp/                # Svelte 5 + Vite, Telegram Mini App SDK
 │       ├── index.html          # Vite entry point (plain SPA, not SvelteKit)
 │       └── src/
 │           ├── main.ts         # mounts App.svelte, initialises Telegram and i18n
 │           ├── lib/api/        # typed client generated from shared contracts
 │           ├── lib/i18n/
-│           ├── lib/stores/     # me, board, reservations, sse
+│           ├── lib/stores/     # me, board, reservations, realtime (one WebSocket)
 │           ├── lib/telegram.ts # SDK init, initData, theme variables
 │           └── routes/         # board, offers, reservations, thread, settings, admin, gate
 ├── packages/
@@ -76,10 +79,9 @@ an interface (§7).
 ├── docs/                       # this specification
 ├── e2e/                        # Playwright suite against the built server (§15)
 ├── legacy/                     # AgroBot 1.0, frozen
-├── scripts/                    # workspace scripts (i18n catalogue check, Postgres init)
-├── docker-compose.yml          # local Postgres
-├── railway.json                # deploy configuration (ADR-0012)
-├── .github/workflows/ci.yml
+├── scripts/                    # i18n check, Postgres init, dev Telegram forwarder, set-webhook
+├── docker-compose.yml          # local Postgres (development and tests only)
+├── .github/workflows/ci.yml    # checks on every PR; deploy job on main (§15)
 ├── package.json, pnpm-workspace.yaml, tsconfig.base.json, eslint.config.js
 └── AGENTS.md, README.md, .env.example
 ```
@@ -92,18 +94,19 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Runtime | Node 22 LTS, ESM, TypeScript strict | `tsx` for dev, `tsc` build. |
-| HTTP | **Hono** | Tiny, typed, runs on Node via `@hono/node-server`; `zod-validator` for bodies. |
-| Bot | **grammY** | Webhook mode in production (`webhookCallback(bot, "hono")`), long polling in dev (`BOT_MODE=polling`). Plugins: `@grammyjs/i18n` not used (we share our own catalogue), `auto-retry` transformer for 429s. |
-| DB | **Postgres 16 + Drizzle ORM** | `drizzle-kit` migrations committed in `apps/server/src/db/migrations`. Driver `postgres` (postgres.js). |
+| Runtime | **Cloudflare Workers** (workerd), ESM, TypeScript strict | `wrangler dev` locally, `wrangler deploy` to production; `nodejs_compat` flag for the `node:crypto` / `node:buffer` the code uses. Node 22 stays the toolchain: pnpm, tsc, vitest, drizzle-kit, the CLI scripts. |
+| HTTP | **Hono** | Native on Workers; `zod-validator` for bodies. Runtime-agnostic, which is what lets integration tests drive it with `app.request()`. |
+| Bot | **grammY** | `webhookCallback(bot, "hono")` on `POST /telegram/webhook`. No polling mode: in development `scripts/dev-telegram.mjs` long-polls Telegram with the throwaway token and posts each update to the local webhook (§14). Plugins: `auto-retry` transformer for 429s; `@grammyjs/i18n` not used (we share our own catalogue). |
+| DB | **Postgres 16 on Neon** (free plan) + **Drizzle ORM** | Driver `postgres` (postgres.js) over a **Hyperdrive** binding: one client per invocation, closed in `waitUntil`. `drizzle-kit` migrations committed in `apps/server/src/db/migrations`, applied from CI (§15). |
+| Jobs and realtime | **Durable Object `AgroBotHub`** | One SQLite-backed instance: alarm-driven schedule, hibernating WebSockets, presence, rate counters (ADR-0017, §7, §9). |
+| Static files | **Workers Static Assets** | The Mini App build; `not_found_handling: single-page-application`, `run_worker_first` for `/api/*`, `/telegram/*`, `/health`. Free and unlimited; costs no Worker CPU. |
 | Validation | **zod** in `packages/shared` | Single source for API contracts; server validates, client infers types. |
 | Frontend | **Svelte 5 + Vite**, `@telegram-apps/sdk` | Router: `svelte-spa-router` (hash routes), decided in M1: a plain SPA with no framework server side, fewer moving parts than SvelteKit. |
-| Realtime | Server-Sent Events | Native `EventSource` in the Mini App; no socket library. |
-| Scheduler | `croner` (or `setInterval` with jitter) inside the server process | Jobs are idempotent and lease-free because there is one instance. |
-| Google Sheets | `googleapis` (Sheets v4) with a service account | Fallback mode: fetch a published-CSV URL with `undici` and parse with `csv-parse`. |
-| Logging | `pino` | JSON logs, request id middleware. |
-| Tests | **Vitest** (unit + integration), **Playwright** (e2e), `@testing-library/svelte` | Integration tests run against the docker-compose Postgres (CI: service container). |
-| Lint/format | ESLint (typescript-eslint, svelte plugin) + Prettier | `pnpm lint`, `pnpm format:check` in CI. |
+| Realtime transport | WebSocket | Native `WebSocket` in the Mini App with reconnect and backoff; hibernated in the hub (§7). |
+| Google Sheets | `fetch` + WebCrypto (RS256 JWT for the service account) | `googleapis` does not run on workerd. Fallback mode: fetch a published-CSV URL and parse with `csv-parse`. |
+| Logging | JSON `console.log` wrapper with request ids | Ingested by Workers Logs (200 000 events/day, 3 days on the Free plan). `@sentry/cloudflare` when `SENTRY_DSN` is set. |
+| Tests | **Vitest** (unit; integration against real Postgres; the hub under `@cloudflare/vitest-pool-workers`), **Playwright** (e2e against `wrangler dev`), `@testing-library/svelte` | Integration tests run against the docker-compose Postgres (CI: service container). |
+| Lint/format | ESLint (typescript-eslint, svelte plugin) + Prettier | `pnpm lint` in CI. |
 | Package manager | pnpm 10 | Workspaces, `pnpm -r` scripts; the version is pinned in `packageManager`. |
 
 ## 4. Authentication and authorization
@@ -127,8 +130,9 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
   the server is the only gate, so a production build opened in a browser gets a 401.
 
 ### Telegram → bot
-- Webhook URL `POST /telegram/webhook`, registered on boot with
-  `secret_token = TELEGRAM_WEBHOOK_SECRET`; grammY checks the header.
+- Webhook URL `POST /telegram/webhook`, registered by `pnpm bot:set-webhook`
+  (`scripts/set-webhook.mjs`, idempotent; run by the deploy workflow and by hand for tunnels)
+  with `secret_token = TELEGRAM_WEBHOOK_SECRET`; grammY checks the header on every update.
 - Quick-action callbacks carry `action:entityId` in `callback_data` (≤ 64 bytes); handlers
   resolve the member from `from.id` and call the same domain service the API would call, so
   permission checks are shared.
@@ -229,7 +233,7 @@ from the two-step path.
 
 | Transition | Actor | Guard | Side effects |
 |---|---|---|---|
-| create | requester | offer reservable, quantity ≤ available (row lock), requester ≠ producer | snapshot price, `expires_at`, N6, system line "reserved", SSE `reservation.changed` + `board.changed` |
+| create | requester | offer reservable, quantity ≤ available (row lock), requester ≠ producer | snapshot price, `expires_at`, N6, system line "reserved", realtime `reservation.changed` + `board.changed` |
 | confirm | producer | pending | clear `expires_at`, N8, system line |
 | reject | producer | pending | reason, N8, release, system line |
 | cancel | requester (pending/confirmed), producer (confirmed) | | reason, `closed_by`, N8, release, system line |
@@ -262,49 +266,83 @@ re-activate them (same rules).
 sheet product (references transfer to that product; ADR-0015), `pending → (deleted)` on admin
 reject (offers withdrawn, reservations cancelled), `active ⇄ archived` by sync.
 
-## 7. Realtime (SSE)
+## 7. Realtime (WebSocket through the hub)
 
-- `GET /api/events` (auth required) keeps the response open, sends `: ping` every 25 s, and
-  pushes named events as JSON: `board.changed {}`, `reservation.changed {id}`,
-  `message.new {reservationId, message}`, `me.changed {}`.
-- `realtime/hub.ts` keeps `Map<memberId, Set<Response>>` and exposes `publish(memberIds,
-  event)` and `isOnline(memberId, reservationId?)` (the client reports which thread it is
-  viewing via `POST /api/reservations/:id/presence` on open/close; used only for the chat
-  notification throttle).
-- Domain services emit events through a `DomainEvents` port after the transaction commits.
-  The hub is one subscriber; the notification enqueuer is another.
-- Clients react by refetching the affected query (board, reservation, thread). Simple and
-  robust; no client-side reconciliation logic.
+- The Mini App calls `POST /api/events/ticket` (auth as §4) and receives a random, single-use
+  ticket valid for 30 s, stored in the hub's SQLite. It then opens
+  `GET /api/events?ticket=<ticket>` as a WebSocket. A browser cannot set headers on a WebSocket
+  and `initData` must not travel in a URL; the ticket carries the member id instead.
+- The Worker checks the `Origin` header against `PUBLIC_URL` and forwards the upgrade to the
+  hub, which redeems the ticket and accepts the socket with the **Hibernation API**, tagged by
+  member id. An idle socket costs no duration; the hub is asleep between events.
+- Events are JSON frames named as before: `board.changed {}`, `reservation.changed {id}`,
+  `message.new {reservationId, message}`, `me.changed {}`. Keep-alives use the platform's
+  auto-response so a ping does not wake the object.
+- Domain services emit events through a `DomainEvents` port after the transaction commits. The
+  Worker's subscriber calls `hub.publish(memberIds, event)` (one RPC per commit, in
+  `waitUntil`) and the hub writes the frame to every socket tagged with those members. The
+  notification enqueuer is another subscriber, unchanged.
+- Presence: the client sends `{viewing: reservationId | null}` when it opens or leaves a
+  thread; the hub stores it as the socket's attachment. `hub.isViewing(memberId, reservationId)`
+  is what the chat notification throttle (§8) asks before enqueuing N9. There is no HTTP
+  endpoint for presence.
+- Clients react by refetching the affected query (board, reservation, thread); no client-side
+  reconciliation. The realtime store reconnects with exponential backoff (1 s … 30 s) and
+  refetches everything on reconnect, so a missed frame costs one extra request, never a stale
+  screen.
 
 ## 8. Notifications (outbox)
 
 1. Domain code inserts a `notifications` row **in the same transaction** as the state change
    (`kind`, `member_id`, `payload`, optional `dedupe_key`).
-2. The dispatcher job runs every 2 s: `SELECT … WHERE status='queued' AND next_attempt_at <=
-   now() ORDER BY created_at LIMIT 20 FOR UPDATE SKIP LOCKED`, renders text + inline keyboard
-   in the recipient's language, calls `sendMessage`, marks `sent` (stores
-   `telegram_message_id`) or schedules a retry with exponential backoff (1 m, 5 m, 30 m, then
-   `failed`). Telegram 429 `retry_after` is honoured and does not count as an attempt; a
-   recipient who blocked the bot (403) is `failed` at once.
+2. After the commit, the request calls `hub.wake()` (in `waitUntil`). The hub's
+   `notifications.dispatch` job runs within a second: `SELECT … WHERE status='queued' AND
+   next_attempt_at <= now() ORDER BY created_at LIMIT 20 FOR UPDATE SKIP LOCKED`, renders
+   text + inline keyboard in the recipient's language, calls `sendMessage`, marks `sent`
+   (stores `telegram_message_id`) or schedules a retry with exponential backoff (1 m, 5 m,
+   30 m, then `failed`). Telegram 429 `retry_after` is honoured and does not count as an
+   attempt; a recipient who blocked the bot (403) is `failed` at once. If the batch was full
+   the hub re-arms itself immediately; otherwise its next alarm for this job is
+   `min(next_attempt_at)` of what remains queued. Batches of 20 stay under the 50 subrequests
+   a free-plan invocation may make, so a group-wide N3 to a hundred members is five alarm runs
+   and a few seconds.
 3. Chat throttle (N9): `dedupe_key = 'chat:<reservationId>:<memberId>'`. Enqueue is skipped if a
-   row with that key exists and the member has not read the thread since (`thread_reads`).
+   row with that key exists and the member has not read the thread since (`thread_reads`), or
+   if `hub.isViewing(memberId, reservationId)` says the recipient has the thread open (§7).
    Reading the thread (`POST …/read`) deletes the key so the next burst notifies again.
 4. Quick actions edit the original notification message after use ("✅ Confirmed") to make
    stale buttons visibly stale.
 
 ## 9. Jobs
 
-| Job | Schedule | What it does |
-|---|---|---|
-| `notifications.dispatch` | every 2 s | §8 step 2. |
-| `reservations.remind` | every 5 min | N7 for pending reservations entering the reminder window. |
-| `reservations.expire` | every 5 min | Expire pending reservations past `expires_at`. |
-| `offers.expire` | daily 00:05 Europe/Madrid + on boot | Expire offers whose `available_until` < today. |
-| `offers.nudge` | daily 09:00 Europe/Madrid | Nudge / mark stale / re-nudge weekly, per PRD US-3.4. |
-| `catalog.sync` | hourly at :07 + on boot if never synced | §10. Also triggered by admin *Sync now* and `/sync`. |
+Jobs are plain async functions `(deps) => Promise<JobReport>` in `jobs/`, each idempotent
+(status guards, `reminded_at`, `nudged_at`, content hashes) because alarms are at-least-once.
+Production has exactly one caller: the hub's `alarm()` (ADR-0017). It keeps a
+`schedule(job, due_at)` table in its SQLite, runs whatever is due, stores each job's next
+`due_at`, and sets the single alarm to the earliest one. Tests call the functions directly.
 
-Jobs are plain async functions `(deps) => Promise<JobReport>`, registered with the scheduler,
-each wrapped in a mutex so overlapping runs are skipped, each logging a one-line report.
+| Job | Next `due_at` | What it does |
+|---|---|---|
+| `notifications.dispatch` | *now* on `hub.wake()` after a commit that enqueued; else `min(next_attempt_at)` of queued rows | §8 step 2, batches of 20. |
+| `reservations.remind` | `min(expires_at − reminder)` over pending, un-reminded reservations | N7 for pending reservations entering the reminder window. |
+| `reservations.expire` | `min(expires_at)` over pending reservations | Expire pending reservations past `expires_at`. |
+| `offers.expire` | next 00:05 Europe/Madrid | Expire offers whose `available_until` < today. |
+| `offers.nudge` | next 09:00 Europe/Madrid | Nudge / mark stale / re-nudge weekly, per PRD US-3.4. |
+| `catalog.sync` | next minute 7 of an hour; also on demand | §10. Admin *Sync now* and `/sync` call `hub.runJob('catalog.sync')` and await its report. |
+
+Rules:
+- Deadline jobs read their next `due_at` from Postgres only during a run, while the database is
+  already awake, and the Worker calls `hub.wake()` after any transaction that creates or moves
+  a deadline (a new reservation, a confirmed one, an enqueued notification), so the alarm is
+  never later than the work.
+- **Nothing polls Postgres on a timer.** A five-minute sweep would keep Neon awake all month
+  (ADR-0016). A Cron Trigger every 15 minutes calls `hub.ensureArmed()`, which reads only the
+  hub's own storage and re-arms the alarm if it is missing; it is a liveness check, not a
+  scheduler.
+- Periodic jobs compute the next local occurrence with `Intl.DateTimeFormat` in Europe/Madrid,
+  so DST is handled and 00:05 means 00:05 on the farm.
+- A job that throws is logged with its name and report; the platform retries the alarm with
+  backoff, and the other jobs' `due_at` rows are untouched.
 
 ## 10. Catalogue sync
 
@@ -331,7 +369,11 @@ fetchRows()  ──►  normalizeHeaders()  ──►  parseRow() ×N  ──►
 - Zero valid rows → `failed`, nothing applied, N12 to admins.
 - Sheets mode: `GOOGLE_SERVICE_ACCOUNT_JSON` (base64 of the key file), `GOOGLE_SHEET_ID`,
   `GOOGLE_SHEET_RANGE` (default `Productes!A:E`). The sheet must be shared read-only with the
-  service account email. CSV mode: `CATALOG_CSV_URL` of a "publish to web → CSV" link.
+  service account email. The client signs an RS256 JWT with WebCrypto, exchanges it for an
+  access token and calls the Sheets REST API with `fetch` (no `googleapis`, which needs Node).
+  CSV mode: `CATALOG_CSV_URL` of a "publish to web → CSV" link.
+- The sync runs in the hub (30 s of CPU), never in a request handler; a manual sync awaits the
+  hub's report and returns it.
 
 ## 11. API
 
@@ -358,8 +400,8 @@ All under `/api`, JSON, auth as §4. Contracts are zod schemas in
 | `GET /reservations/:id/messages?after=<id>` | party | Paginated thread. |
 | `POST /reservations/:id/messages` | party | `{body}`. 403 `THREAD_READONLY` when closed too long. |
 | `POST /reservations/:id/read` | party | Mark read up to latest. |
-| `POST /reservations/:id/presence` | party | `{viewing: boolean}`. |
-| `GET /events` | member | SSE. |
+| `POST /events/ticket` | member | Single-use 30 s ticket for the realtime socket (§7). |
+| `GET /events?ticket=` | member (via ticket) | WebSocket upgrade, handed to the hub. Presence is a socket message, not an endpoint (§7). |
 | `GET /admin/members?status=` | admin | |
 | `POST /admin/members/:id/approve` · `/reject` · `/suspend` · `/reinstate` · `/promote` · `/demote` | admin | Guards for last admin. |
 | `GET/POST/DELETE /admin/invites` | admin | Pre-approvals. |
@@ -395,63 +437,111 @@ Behaviour:
 - Telegram theme via `themeParams` → CSS variables; `MainButton` used for the primary action of
   forms (publish, reserve, send); `BackButton` wired to router; haptic feedback on actions.
 - Data layer: small fetch wrapper adding the `tma` header; per-screen stores with `refetch()`;
-  SSE store dispatches refetches. Optimistic UI only for sending chat messages.
+  the realtime store (one WebSocket, §7) dispatches refetches. Optimistic UI only for sending
+  chat messages.
 - i18n: `t(key, params)` from `packages/shared`, current language from `/me`; falls back to the
   Telegram `language_code` before `/me` resolves. Numbers/dates via `Intl` with
   `Europe/Madrid`.
 
 ## 13. Configuration
 
-| Variable | Required | Notes |
-|---|---|---|
-| `BOT_TOKEN` | yes | AgroBot 1.0's existing token (ADR-0013). 1.0 must be stopped before 2.0 uses it — one token, one consumer. |
-| `BOT_USERNAME`, `MINIAPP_SHORT_NAME` | yes | For deep links. `BOT_USERNAME` is 1.0's; the Mini App short name is created in @BotFather on the same bot. |
-| `BOT_MODE` | no | `webhook` (default) or `polling` (dev). |
-| `PUBLIC_URL` | yes in webhook mode | HTTPS base; webhook is `PUBLIC_URL/telegram/webhook`. |
-| `TELEGRAM_WEBHOOK_SECRET` | yes in webhook mode | Random 32+ chars. |
-| `DATABASE_URL` | yes | Postgres connection string. |
-| `ADMIN_TELEGRAM_IDS` | yes (first deploy) | Comma-separated; auto-approved as admins on `/start`. |
-| `CATALOG_SOURCE` | yes | `sheets` or `csv`. |
-| `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_RANGE`, `GOOGLE_SERVICE_ACCOUNT_JSON` | sheets mode | Range defaults to `Productes!A:E` (PRD §6). Key is base64; the sheet is shared read-only with that service account. |
-| `CATALOG_CSV_URL` | csv mode | |
-| `DEFAULT_LOCALE` | no | `ca`. |
-| `TZ` | no | `Europe/Madrid` (display only; storage is UTC). |
-| `PORT` | no | 8080. |
-| `LOG_LEVEL` | no | `info`. |
-| `SENTRY_DSN` | no | Enables error tracking. |
-| `DEV_AUTH_BYPASS_TELEGRAM_ID` | dev only | Ignored in production. |
+Production configuration lives on the Worker: plain values as `vars` in `wrangler.jsonc`,
+secrets set once with `wrangler secret put`, and bindings (Hyperdrive, the hub, static assets)
+declared in the same file. Development uses one `.env` at the repository root, which
+`wrangler dev`, Vite (`VITE_*` keys) and the CLI scripts all read. `env.ts` validates the
+merged object with zod at the start of every invocation and fails the request with a readable
+list of problems; nothing is ever logged by value.
 
-`env.ts` validates all of this with zod at boot and exits with a readable list of problems.
+| Variable | Where | Required | Notes |
+|---|---|---|---|
+| `BOT_TOKEN` | secret | yes | AgroBot 1.0's existing token (ADR-0013). 1.0 must be stopped before 2.0 uses it — one token, one consumer. |
+| `TELEGRAM_WEBHOOK_SECRET` | secret | yes | Random 32+ chars; checked on every webhook update. |
+| `BOT_USERNAME`, `MINIAPP_SHORT_NAME` | var | yes | For deep links. `BOT_USERNAME` is 1.0's; the Mini App short name is created in @BotFather on the same bot. |
+| `PUBLIC_URL` | var | yes | HTTPS base of the Worker (`https://<name>.<account>.workers.dev` or the custom domain). The webhook is `PUBLIC_URL/telegram/webhook`; also the accepted `Origin` for sockets. |
+| `HYPERDRIVE` | binding | yes | Hyperdrive configuration pointing at Neon's pooled connection string; `env.HYPERDRIVE.connectionString` is what the driver opens. |
+| `DATABASE_URL` | `.env` / CI secret | CLI only | Direct Postgres URL for `db:migrate`, `db:seed`, `db:generate` and the integration tests (`TEST_DATABASE_URL`). In development it is also the local Hyperdrive target (`WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`). Never a Worker var. |
+| `ADMIN_TELEGRAM_IDS` | var | yes (first deploy) | Comma-separated; auto-approved as admins on `/start`. |
+| `CATALOG_SOURCE` | var | yes | `sheets` or `csv`. |
+| `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_RANGE` | var | sheets mode | Range defaults to `Productes!A:E` (PRD §6). |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | secret | sheets mode | Base64 of the key file; the sheet is shared read-only with that service account. |
+| `CATALOG_CSV_URL` | var | csv mode | |
+| `NODE_ENV` | var | no | `production` on the Worker, `development` in `.env`, `test` in tests. Gates the dev auth bypass. |
+| `DEFAULT_LOCALE` | var | no | `ca`. |
+| `TZ` | var | no | `Europe/Madrid` (display only; storage is UTC). |
+| `LOG_LEVEL` | var | no | `info`. |
+| `GIT_COMMIT` | var | no | Set by the deploy workflow (`--var GIT_COMMIT:<sha>`) for `/status` and `/health`. |
+| `SENTRY_DSN` | secret | no | Enables error tracking. |
+| `DEV_AUTH_BYPASS_TELEGRAM_ID` | `.env` only | dev only | Refused when `NODE_ENV=production`. |
+
+Gone with the always-on process: `BOT_MODE` (webhook only), `PORT` (`wrangler dev --port 8080`
+keeps the Vite proxy unchanged) and `LOG_PRETTY`.
 
 ## 14. Local development
 
 ```bash
 pnpm install
-docker compose up -d            # Postgres on 5432
-cp .env.example .env            # fill BOT_TOKEN etc.
+docker compose up -d            # Postgres on 5432 (+ agrobot_test)
+cp .env.example .env            # fill BOT_TOKEN (a throwaway bot) etc.
 pnpm db:migrate && pnpm db:seed # units, settings, dev members
-pnpm dev                        # server (tsx watch, BOT_MODE=polling) + miniapp (vite)
+pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (vite, :5173)
+                                # + scripts/dev-telegram.mjs (feeds the local webhook)
 ```
+- `wrangler dev` runs the real runtime locally (workerd): the Worker, the hub with its alarms
+  and sockets, static assets from `apps/miniapp/dist` when present, and a local Hyperdrive that
+  points at Docker Postgres. It reads `.env`, so there is one configuration file.
+- The bot has no polling mode. `scripts/dev-telegram.mjs` deletes the throwaway bot's webhook,
+  long-polls `getUpdates` with `BOT_TOKEN`, and POSTs every update to
+  `http://localhost:8080/telegram/webhook` with the secret header. The webhook handler is the
+  only bot code path, in development as in production.
 - Mini App outside Telegram: open `http://localhost:5173`, the dev auth bypass signs you in as
   `DEV_AUTH_BYPASS_TELEGRAM_ID`. A dev-only switcher lets you impersonate any seeded member to
   test both sides of a reservation in two browser tabs.
-- Inside Telegram: `cloudflared tunnel --url http://localhost:8080` (or ngrok), set
-  `PUBLIC_URL`, switch `BOT_MODE=webhook`, point the Mini App URL in @BotFather at the tunnel.
+- Inside Telegram: `cloudflared tunnel --url http://localhost:8080`, set `PUBLIC_URL` to the
+  tunnel, run `pnpm bot:set-webhook` (stop the forwarder first: a bot has either a webhook or
+  `getUpdates`, never both), and point the Mini App URL in @BotFather at the tunnel.
 
 ## 15. Build, CI, deployment
 
-- `Dockerfile` (multi-stage): install with pnpm → build `shared`, `miniapp`, `server` → copy
-  `miniapp/dist` into `server/public` → runtime image `node:22-alpine`, `node dist/index.js`.
-  Migrations run on boot (`drizzle-orm/migrator`) before the HTTP server listens.
-- CI (`.github/workflows/ci.yml`) on every PR and on `main`: `pnpm lint`, `pnpm typecheck`,
-  `pnpm test` (unit + integration with a Postgres service container), `pnpm build`,
-  `pnpm e2e` (Playwright against the built server with dev auth bypass and a seeded DB).
-- Deploy: container to **Railway** (`railway.json` in repo) with **Railway Postgres**; secrets as
-  Railway service variables, `PUBLIC_URL` from the service domain (ADR-0012). Daily managed
-  backups; the restore drill in M6 proves them. Nothing in the image is Railway-specific, so any
-  provider that runs a container and gives an HTTPS URL remains a working target.
-- Release: tag `v2.x.y`; `/status` shows the version from `package.json` + git SHA baked at
-  build time.
+- **Build.** `pnpm build` builds `shared` (tsc), the Mini App (Vite, into `apps/miniapp/dist`,
+  which `wrangler.jsonc` declares as the assets directory) and validates the Worker bundle
+  (`wrangler deploy --dry-run --outdir dist`). Wrangler bundles `src/worker.ts` with esbuild;
+  the migrations folder is not shipped, it is applied from CI.
+- **CI** (`.github/workflows/ci.yml`) on every PR and on `main`: `pnpm lint`, `pnpm typecheck`,
+  `pnpm test` (unit + integration with a Postgres service container + hub tests under
+  `vitest-pool-workers`), `pnpm build`, `pnpm e2e` (Playwright against `wrangler dev` with the
+  local Hyperdrive on `agrobot_test`, the dev auth bypass and a seeded DB). GitHub Actions is
+  free for this public repository.
+- **Deploy** (`deploy` job in the same workflow, on `main` after the checks pass):
+  1. `pnpm db:migrate` against Neon (`DATABASE_URL` repository secret; forward-only).
+  2. `wrangler deploy --var GIT_COMMIT:$GITHUB_SHA` (`CLOUDFLARE_API_TOKEN`,
+     `CLOUDFLARE_ACCOUNT_ID`).
+  3. `pnpm bot:set-webhook` (`BOT_TOKEN`, `PUBLIC_URL`, `TELEGRAM_WEBHOOK_SECRET`), idempotent.
+
+  Secrets on the Worker are set once with `wrangler secret put`; vars live in `wrangler.jsonc`.
+  A staging Worker (`agrobot-staging`, its own Neon branch and a throwaway bot) takes the same
+  workflow from a `staging` branch.
+- **Rollback.** `wrangler rollback` restores the previous Worker version in seconds. Migrations
+  are never rolled back; write a compensating migration.
+- **Backups.** Neon point-in-time restore, six hours on the free plan (ADR-0016). Restoring is
+  creating a branch at a timestamp and re-pointing Hyperdrive at it; the M6 drill does exactly
+  that against staging. There is no off-site copy (backlog item 1).
+- **Free-plan budget** (per day unless stated), with the expected load for a hundred members:
+
+  | Cap | Free plan | Expected | Where it is spent |
+  |---|---|---|---|
+  | Worker requests | 100 000 | < 10 000 | API calls and webhooks; assets do not count |
+  | Worker CPU | 10 ms per request | 1–3 ms | Hono + zod + Drizzle per request |
+  | Hub requests | 100 000 | < 5 000 | `wake`, `publish`, tickets, alarms, socket frames |
+  | Hub duration | 13 000 GB-s | < 1 000 | alarm runs; hibernated sockets are free |
+  | Hyperdrive queries | 100 000 | < 20 000 | every statement, requests and jobs alike |
+  | Neon compute | 100 CU-hours per month | 20–40 | awake only during requests and due jobs |
+  | Neon storage | 0.5 GB | < 50 MB | |
+
+  Past a cap the platform returns errors until midnight UTC, so the runbook checks these
+  weekly, and the Workers Paid plan ($5/month) is the escape hatch if any column ever passes
+  a quarter of its cap.
+- **Release.** Tag `v2.x.y`; `/status` shows the version from `package.json` + the git SHA
+  passed at deploy time.
 
 ## 16. Testing strategy
 
@@ -460,8 +550,9 @@ pnpm dev                        # server (tsx watch, BOT_MODE=polling) + miniapp
 | Domain unit | Vitest | State machine guards and transitions, availability math, unit step validation, slug normalization, sheet row parsing, notification throttle logic. Ports mocked. |
 | Integration | Vitest + real Postgres | Every API route through Hono's `app.request()`; concurrency test: two parallel reservations for the last quantity, exactly one succeeds; jobs against seeded data with a fake clock. |
 | Bot | Vitest + grammY test transformer | `/start` paths (applicant, pre-approved, admin bootstrap), quick actions incl. stale ones. |
+| Hub | Vitest under `@cloudflare/vitest-pool-workers` | Next-due math (Madrid local time, DST), alarm re-arming, ticket issue/redeem/expiry, socket tagging and publish fan-out, rate counters. Jobs are mocked here; they have their own integration tests. |
 | Mini App | Vitest + Testing Library | Components with i18n and both languages; reserve form validation per unit. |
-| E2E | Playwright | Two browser contexts (producer, requester): publish → appears on board → reserve → confirm → chat both ways → deliver. Admin approve flow. Runs in CI. |
+| E2E | Playwright against `wrangler dev` | Two browser contexts (producer, requester): publish → appears on board → reserve → confirm → chat both ways → deliver. Admin approve flow. Runs in CI. |
 | i18n | build step | Script fails if `ca.json` and `es.json` keys differ or a key used in code is missing. |
 
 ## 17. Security checklist
@@ -470,8 +561,12 @@ pnpm dev                        # server (tsx watch, BOT_MODE=polling) + miniapp
   stale; never trust `user` fields from the client body.
 - Webhook secret header check; reject other methods/paths from Telegram IP ranges not needed.
 - All authorization inside domain services (not only in routes) so quick actions and API share it.
-- Rate limit `POST /api/*` per member (e.g. 60/min) and messages per thread (20/min).
+- Rate limit mutating `/api/*` calls per member (e.g. 60/min) and messages per thread (20/min)
+  with counters in the hub's SQLite (one instance, exact counts).
+- Socket tickets are random (128 bits), single-use, 30 s; the upgrade checks `Origin` against
+  `PUBLIC_URL`; `initData` never appears in a URL or a log.
 - Body size limits; message length limits; HTML-escape everything we send to Telegram
   (`parse_mode: 'HTML'`, one escape helper, unit-tested).
-- Secrets only from env; `.env` git-ignored; `env.ts` never logs values.
+- Secrets only as Worker secrets (`wrangler secret put`) or the local `.env`; never in
+  `wrangler.jsonc` or the repository; `env.ts` never logs values.
 - Dependencies pinned via lockfile; `pnpm audit` in CI as non-blocking report.
