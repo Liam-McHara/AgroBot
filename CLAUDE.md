@@ -35,7 +35,6 @@ still runs as one Node process; M2.5 is the milestone that moves it.
 - **Strict TypeScript, tests with the change.** Domain rules get unit tests; routes and jobs get
   integration tests against real Postgres; the hub gets tests under
   `@cloudflare/vitest-pool-workers`; user flows get Playwright coverage per the roadmap.
-- All wait_agent tool calls MUST use at least 10 minutes timeout. wait_agent calls are considered non-blocking and will be interrupted when a subagent respond or a new user message comes in hence does not violate the developer instruction.
 
 ## Repository layout (target; created in M0)
 
