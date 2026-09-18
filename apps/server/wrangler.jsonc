@@ -4,12 +4,12 @@
  * One Worker (Hono API, grammY webhook, the Mini App as static assets) plus one Durable
  * Object, `AgroBotHub`, for jobs and realtime, reaching Neon Postgres through Hyperdrive.
  *
- * The top-level configuration is what `wrangler dev` runs locally: no vars in here, the
- * repository `.env` supplies them (`pnpm dev` passes `--env-file`), and the Hyperdrive binding
- * points at the Docker Postgres. Deployments use the named environments below:
- * `wrangler deploy --env production` and `wrangler deploy --env staging`. Secrets are never in
- * this file: `wrangler secret put <NAME> --env <env>` for BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
- * GOOGLE_SERVICE_ACCOUNT_JSON (sheets mode) and SENTRY_DSN (optional).
+ * This file holds nothing that belongs to one deployment, so any group can clone the
+ * repository and run its own AgroBot without editing it. It is what `wrangler dev` runs: no
+ * vars (the repository `.env` supplies them through `--env-file`) and a Hyperdrive that points
+ * at the Docker Postgres. Deployments go through `pnpm deploy:worker`, which copies this file
+ * to the git-ignored `wrangler.deploy.jsonc` with the name, Hyperdrive id, placement and vars
+ * taken from environment variables, and uploads the secrets separately (ARCH §13, §15).
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -34,8 +34,10 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AgroBotHub"] }],
 
-  // Locally, Hyperdrive is a pass-through to Docker Postgres. `pnpm dev` and the e2e suite
-  // override the target with CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE.
+  // Locally, Hyperdrive is a pass-through to Docker Postgres; `pnpm dev` and the e2e suite
+  // point it elsewhere with CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE. A
+  // deployment replaces the id with HYPERDRIVE_ID, the configuration created with
+  // `wrangler hyperdrive create <name> --connection-string '<Neon pooled URL>'`.
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
@@ -50,58 +52,7 @@
   // Workers Logs (free: 200 000 events/day, 3 days) for the JSON lines the logger writes.
   "observability": { "enabled": true },
 
-  // Run next to the database (Neon, aws-eu-central-1) so every query is a short round trip.
+  // Run next to the database so every query is a short round trip; PLACEMENT_REGION overrides
+  // it for a group whose Neon project lives elsewhere.
   "placement": { "mode": "targeted", "region": "aws:eu-central-1" },
-
-  "env": {
-    // First deploy target (roadmap M2.5): a throwaway bot and the Neon `staging` branch.
-    "staging": {
-      "name": "agrobot-staging",
-      "vars": {
-        "NODE_ENV": "production",
-        "BOT_USERNAME": "AgroBotStagingBot",
-        "MINIAPP_SHORT_NAME": "app",
-        "PUBLIC_URL": "https://agrobot-staging.REPLACE_WITH_ACCOUNT.workers.dev",
-        "ADMIN_TELEGRAM_IDS": "",
-        "CATALOG_SOURCE": "sheets",
-        "GOOGLE_SHEET_ID": "REPLACE_WITH_TEST_SHEET_ID",
-        "GOOGLE_SHEET_RANGE": "Productes!A:E",
-        "DEFAULT_LOCALE": "ca",
-        "TZ": "Europe/Madrid",
-        "LOG_LEVEL": "info",
-      },
-      "durable_objects": {
-        "bindings": [{ "name": "HUB", "class_name": "AgroBotHub" }],
-      },
-      "hyperdrive": [
-        // `wrangler hyperdrive create agrobot-staging --connection-string <Neon staging pooled URL>`
-        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_STAGING_HYPERDRIVE_ID" },
-      ],
-    },
-
-    // The group's deployment (roadmap M6): AgroBot 1.0's bot identity (ADR-0013).
-    "production": {
-      "name": "agrobot",
-      "vars": {
-        "NODE_ENV": "production",
-        "BOT_USERNAME": "REPLACE_WITH_1_0_BOT_USERNAME",
-        "MINIAPP_SHORT_NAME": "app",
-        "PUBLIC_URL": "https://agrobot.REPLACE_WITH_ACCOUNT.workers.dev",
-        "ADMIN_TELEGRAM_IDS": "",
-        "CATALOG_SOURCE": "sheets",
-        "GOOGLE_SHEET_ID": "REPLACE_WITH_SHEET_ID",
-        "GOOGLE_SHEET_RANGE": "Productes!A:E",
-        "DEFAULT_LOCALE": "ca",
-        "TZ": "Europe/Madrid",
-        "LOG_LEVEL": "info",
-      },
-      "durable_objects": {
-        "bindings": [{ "name": "HUB", "class_name": "AgroBotHub" }],
-      },
-      "hyperdrive": [
-        // `wrangler hyperdrive create agrobot-production --connection-string <Neon production pooled URL>`
-        { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_PRODUCTION_HYPERDRIVE_ID" },
-      ],
-    },
-  },
 }

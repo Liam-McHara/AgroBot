@@ -24,6 +24,7 @@
     "dev:miniapp": "pnpm --filter @agrobot/miniapp dev",
     "dev:telegram": "node scripts/dev-telegram.mjs",
     "bot:set-webhook": "node scripts/set-webhook.mjs",
+    "deploy:worker": "node scripts/deploy-worker.mjs",
     "db:migrate": "pnpm run build:shared && pnpm --filter @agrobot/server db:migrate",
     "db:seed": "pnpm run build:shared && pnpm --filter @agrobot/server db:seed",
     "db:generate": "pnpm run build:shared && pnpm --filter @agrobot/server db:generate"

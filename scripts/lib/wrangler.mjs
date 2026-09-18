@@ -4,7 +4,7 @@
  * different databases.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,8 +25,61 @@ export function ensureAssetsDirectory() {
   mkdirSync(miniAppDist, { recursive: true });
 }
 
+/**
+ * Parse JSON with comments and trailing commas, which is what `wrangler.jsonc` is. Strings are
+ * left alone (a `//` inside a URL is not a comment), so this is two small passes over the text
+ * rather than a regular expression.
+ */
+export function parseJsonc(text) {
+  const withoutComments = strip(text, (rest, emit, skip) => {
+    if (rest.startsWith('//')) return skip(Math.max(rest.indexOf('\n'), 1));
+    if (rest.startsWith('/*')) {
+      const end = rest.indexOf('*/', 2);
+      return skip(end === -1 ? rest.length : end + 2);
+    }
+    return emit();
+  });
+  const withoutTrailingCommas = strip(withoutComments, (rest, emit, skip) => {
+    if (rest[0] === ',' && /^,\s*[}\]]/.test(rest)) return skip(1);
+    return emit();
+  });
+  return JSON.parse(withoutTrailingCommas);
+}
+
+/** Walk `text` outside of string literals, letting `outside` keep or drop each position. */
+function strip(text, outside) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    let advanced = 0;
+    outside(
+      text.slice(i),
+      () => {
+        out += text[i];
+        advanced = 1;
+      },
+      (length) => {
+        advanced = length;
+      },
+    );
+    i += advanced;
+  }
+  return out;
+}
+
+export function readJsonc(path) {
+  return parseJsonc(readFileSync(path, 'utf8'));
+}
+
 /** The shim pnpm links for the server's `wrangler` dev dependency. */
-function wranglerBin() {
+export function wranglerBin() {
   const shim = join(
     serverDir,
     'node_modules/.bin',

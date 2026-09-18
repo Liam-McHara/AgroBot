@@ -39,3 +39,5 @@ legacy/**/*.js
 
 # wrangler's local state (the dev hub's storage, cached bundles) and the e2e suite's copy
 .wrangler/
+# The deploy configuration `pnpm deploy:worker` generates from environment variables
+apps/server/wrangler.deploy.jsonc
