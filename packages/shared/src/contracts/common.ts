@@ -16,10 +16,10 @@ export type ErrorBody = z.infer<typeof errorBodySchema>;
 
 export const languageSchema = z.enum(LANGUAGES);
 
+/** `GET /health` (ARCH §1). A Worker has no uptime, so there is none to report. */
 export const healthSchema = z.object({
   status: z.literal('ok'),
   version: z.string(),
   commit: z.string(),
-  uptimeSeconds: z.number(),
 });
 export type Health = z.infer<typeof healthSchema>;

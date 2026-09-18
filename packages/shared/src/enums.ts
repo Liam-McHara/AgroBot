@@ -307,18 +307,6 @@ export const ERROR_STATUS: { readonly [C in ErrorCode]: number } = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Realtime (ARCH §7)
-// ---------------------------------------------------------------------------
-
-export const SSE_EVENTS = [
-  'board.changed',
-  'reservation.changed',
-  'message.new',
-  'me.changed',
-] as const;
-export type SseEvent = Values<typeof SSE_EVENTS>;
-
-// ---------------------------------------------------------------------------
 // Miscellaneous constants
 // ---------------------------------------------------------------------------
 

@@ -56,7 +56,8 @@ beyond one hub instance is out of scope, as one process was before.
 │   │   │   │                   #   notifications/ (renderers per kind), deep links
 │   │   │   ├── jobs/           # job functions + next-due math; the hub calls them
 │   │   │   ├── integrations/   # google-sheets.ts (fetch + WebCrypto), csv-catalog.ts, telegram-api.ts
-│   │   │   ├── realtime/       # hub.ts: the Durable Object (schedule, sockets, presence, counters)
+│   │   │   ├── realtime/       # hub.ts: the Durable Object (schedule, sockets, presence, counters);
+│   │   │   │                   #   port.ts (what the Worker asks of it), client.ts (over the stub)
 │   │   │   └── i18n/           # server-side t() bound to member language
 │   │   ├── test/               # integration tests (real Postgres)
 │   │   └── wrangler.jsonc      # Worker config: assets, Hyperdrive, DO, cron, vars (ADR-0016)
@@ -77,24 +78,26 @@ beyond one hub instance is out of scope, as one process was before.
 │           ├── i18n/           # t() with plural/number/date formatting
 │           └── messages/       # ca.json, es.json (+ typed keys)
 ├── docs/                       # this specification
-├── e2e/                        # Playwright suite against the built server (§15)
+├── e2e/                        # Playwright suite against wrangler dev (§15)
 ├── legacy/                     # AgroBot 1.0, frozen
-├── scripts/                    # i18n check, Postgres init, dev Telegram forwarder, set-webhook
+├── scripts/                    # i18n check, Postgres init, wrangler dev wrapper (+ lib/), dev
+│                               #   Telegram forwarder, set-webhook
 ├── docker-compose.yml          # local Postgres (development and tests only)
-├── .github/workflows/ci.yml    # checks on every PR; deploy job on main (§15)
+├── .github/workflows/ci.yml    # checks on every PR; deploy job on main and staging (§15)
 ├── package.json, pnpm-workspace.yaml, tsconfig.base.json, eslint.config.js
-└── AGENTS.md, README.md, .env.example
+└── CLAUDE.md, README.md, .env.example
 ```
 
 Rules of dependency: `miniapp` and `server` depend on `shared`; nothing depends on `legacy`.
-`domain/` never imports from `http/`, `bot/` or `integrations/`; it receives ports (db
-transaction, clock, notifier, event bus) as parameters so it is unit-testable.
+`domain/` never imports from `http/`, `bot/`, `integrations/` or `realtime/` (ESLint enforces
+it); it receives ports (db transaction, clock, the hub as `domain/ports.ts`) as parameters so
+it is unit-testable.
 
 ## 3. Runtime and libraries
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Runtime | **Cloudflare Workers** (workerd), ESM, TypeScript strict | `wrangler dev` locally, `wrangler deploy` to production; `nodejs_compat` flag for the `node:crypto` / `node:buffer` the code uses. Node 22 stays the toolchain: pnpm, tsc, vitest, drizzle-kit, the CLI scripts. |
+| Runtime | **Cloudflare Workers** (workerd), ESM, TypeScript strict | `wrangler dev` locally on the committed `wrangler.jsonc`; `pnpm deploy:worker` from CI, which generates the deploy configuration from environment variables (§13, §15); `nodejs_compat` flag for the `node:crypto` / `node:buffer` the code uses. Targeted placement puts the Worker next to Neon (`aws:eu-central-1`), and the hub is created with the `weur` location hint. Node 22 stays the toolchain: pnpm, tsc, vitest, drizzle-kit, the CLI scripts. |
 | HTTP | **Hono** | Native on Workers; `zod-validator` for bodies. Runtime-agnostic, which is what lets integration tests drive it with `app.request()`. |
 | Bot | **grammY** | `webhookCallback(bot, "hono")` on `POST /telegram/webhook`. No polling mode: in development `scripts/dev-telegram.mjs` long-polls Telegram with the throwaway token and posts each update to the local webhook (§14). Plugins: `auto-retry` transformer for 429s; `@grammyjs/i18n` not used (we share our own catalogue). |
 | DB | **Postgres 16 on Neon** (free plan) + **Drizzle ORM** | Driver `postgres` (postgres.js) over a **Hyperdrive** binding: one client per invocation, closed in `waitUntil`. `drizzle-kit` migrations committed in `apps/server/src/db/migrations`, applied from CI (§15). |
@@ -105,7 +108,7 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
 | Realtime transport | WebSocket | Native `WebSocket` in the Mini App with reconnect and backoff; hibernated in the hub (§7). |
 | Google Sheets | `fetch` + WebCrypto (RS256 JWT for the service account) | `googleapis` does not run on workerd. Fallback mode: fetch a published-CSV URL and parse with `csv-parse`. |
 | Logging | JSON `console.log` wrapper with request ids | Ingested by Workers Logs (200 000 events/day, 3 days on the Free plan). `@sentry/cloudflare` when `SENTRY_DSN` is set. |
-| Tests | **Vitest** (unit; integration against real Postgres; the hub under `@cloudflare/vitest-pool-workers`), **Playwright** (e2e against `wrangler dev`), `@testing-library/svelte` | Integration tests run against the docker-compose Postgres (CI: service container). |
+| Tests | **Vitest** (unit; integration against real Postgres; the hub under `@cloudflare/vitest-plugin`, inside workerd), **Playwright** (e2e against `wrangler dev`), `@testing-library/svelte` | Integration tests run against the docker-compose Postgres (CI: service container). The Cloudflare plugin requires Vitest 4, so the server pins it while the other packages are on 5. |
 | Lint/format | ESLint (typescript-eslint, svelte plugin) + Prettier | `pnpm lint` in CI. |
 | Package manager | pnpm 10 | Workspaces, `pnpm -r` scripts; the version is pinned in `packageManager`. |
 
@@ -121,7 +124,9 @@ transaction, clock, notifier, event bus) as parameters so it is unit-testable.
 - Result is attached to context as `ctx.var.member` with `status` and `role`.
 - Route guards: `requireMember` (status `approved`), `requireAdmin` (role `admin`). Applicants
   and suspended members can only call `GET /api/me`, which is how the gate screen knows what
-  to show; everything else answers 403 with `NOT_APPROVED` or `SUSPENDED`. The guards call
+  to show, and `POST /api/events/ticket`, so the gate hears of an approval as `me.changed` on
+  the socket (§7) instead of polling `/me` on a timer; everything else answers 403 with
+  `NOT_APPROVED` or `SUSPENDED`. The guards call
   `domain/members` (`assertMember`, `assertAdmin`), and admin actions re-check the actor's row
   inside their transaction, so a stale in-memory copy can never authorize anything.
 - Dev only: if `DEV_AUTH_BYPASS_TELEGRAM_ID` is set **and** `NODE_ENV !== 'production'`, a
@@ -268,20 +273,22 @@ reject (offers withdrawn, reservations cancelled), `active ⇄ archived` by sync
 
 ## 7. Realtime (WebSocket through the hub)
 
-- The Mini App calls `POST /api/events/ticket` (auth as §4) and receives a random, single-use
-  ticket valid for 30 s, stored in the hub's SQLite. It then opens
-  `GET /api/events?ticket=<ticket>` as a WebSocket. A browser cannot set headers on a WebSocket
-  and `initData` must not travel in a URL; the ticket carries the member id instead.
+- The Mini App calls `POST /api/events/ticket` (auth as §4; any status, so the gate can
+  listen too) and receives a random, single-use ticket valid for 30 s, stored in the hub's
+  SQLite. It then opens `GET /api/events?ticket=<ticket>` as a WebSocket. A browser cannot set
+  headers on a WebSocket and `initData` must not travel in a URL; the ticket carries the
+  member id instead. A non-member's socket only ever receives `me.changed`.
 - The Worker checks the `Origin` header against `PUBLIC_URL` and forwards the upgrade to the
   hub, which redeems the ticket and accepts the socket with the **Hibernation API**, tagged by
   member id. An idle socket costs no duration; the hub is asleep between events.
 - Events are JSON frames named as before: `board.changed {}`, `reservation.changed {id}`,
   `message.new {reservationId, message}`, `me.changed {}`. Keep-alives use the platform's
   auto-response so a ping does not wake the object.
-- Domain services emit events through a `DomainEvents` port after the transaction commits. The
-  Worker's subscriber calls `hub.publish(memberIds, event)` (one RPC per commit, in
-  `waitUntil`) and the hub writes the frame to every socket tagged with those members. The
-  notification enqueuer is another subscriber, unchanged.
+- Domain services call `hub.publish(memberIds, event)` on the hub port (`domain/ports.ts`)
+  after the transaction commits; the Worker's implementation is one RPC per commit, in
+  `waitUntil`, and the hub writes the frame to every socket tagged with those members. The
+  outbox is written inside the same transaction as before; `hub.wake()` after the commit is
+  what sends it (§8).
 - Presence: the client sends `{viewing: reservationId | null}` when it opens or leaves a
   thread; the hub stores it as the socket's attachment. `hub.isViewing(memberId, reservationId)`
   is what the chat notification throttle (§8) asks before enqueuing N9. There is no HTTP
@@ -341,8 +348,15 @@ Rules:
   scheduler.
 - Periodic jobs compute the next local occurrence with `Intl.DateTimeFormat` in Europe/Madrid,
   so DST is handled and 00:05 means 00:05 on the farm.
-- A job that throws is logged with its name and report; the platform retries the alarm with
-  backoff, and the other jobs' `due_at` rows are untouched.
+- A job that throws is logged with its name and retried by the hub with the outbox's backoff
+  (1 m, 5 m, 30 m, then every 30 m); the other jobs' `due_at` rows are untouched. The alarm
+  handler itself never throws, so a database that is down cannot turn the platform's retries
+  into a tight loop.
+- The first time the hub exists (its schedule is empty) every job is due at once, which is how
+  the catalogue is imported right after a deploy: there is no boot to hook it to.
+- `hub.runJob(name, params)` runs one job on demand inside the hub and returns its result; a
+  domain error (a demoted actor) travels back as data and is rethrown by the Worker as the same
+  `AppError`, so `/sync` and *Sync now* answer as they would have without the hub.
 
 ## 10. Catalogue sync
 
@@ -400,7 +414,7 @@ All under `/api`, JSON, auth as §4. Contracts are zod schemas in
 | `GET /reservations/:id/messages?after=<id>` | party | Paginated thread. |
 | `POST /reservations/:id/messages` | party | `{body}`. 403 `THREAD_READONLY` when closed too long. |
 | `POST /reservations/:id/read` | party | Mark read up to latest. |
-| `POST /events/ticket` | member | Single-use 30 s ticket for the realtime socket (§7). |
+| `POST /events/ticket` | any auth | Single-use 30 s ticket for the realtime socket (§7). |
 | `GET /events?ticket=` | member (via ticket) | WebSocket upgrade, handed to the hub. Presence is a socket message, not an endpoint (§7). |
 | `GET /admin/members?status=` | admin | |
 | `POST /admin/members/:id/approve` · `/reject` · `/suspend` · `/reinstate` · `/promote` · `/demote` | admin | Guards for last admin. |
@@ -445,21 +459,34 @@ Behaviour:
 
 ## 13. Configuration
 
-Production configuration lives on the Worker: plain values as `vars` in `wrangler.jsonc`,
-secrets set once with `wrangler secret put`, and bindings (Hyperdrive, the hub, static assets)
-declared in the same file. Development uses one `.env` at the repository root, which
-`wrangler dev`, Vite (`VITE_*` keys) and the CLI scripts all read. `env.ts` validates the
-merged object with zod at the start of every invocation and fails the request with a readable
-list of problems; nothing is ever logged by value.
+Nothing that belongs to one deployment is in the repository, so any group can clone it and
+run its own AgroBot from its own variables. `apps/server/wrangler.jsonc` holds only what every
+deployment shares (entry, compatibility, assets, the hub, the cron, a local Hyperdrive) and is
+what `wrangler dev` runs. `pnpm deploy:worker` (`scripts/deploy-worker.mjs`) copies it to the
+git-ignored `wrangler.deploy.jsonc` with the Worker name, the Hyperdrive id, the placement and
+the `vars` taken from environment variables, runs `wrangler deploy` with it, and uploads the
+secrets with `wrangler secret bulk` from stdin; only the variables listed below reach the
+Worker, so a development-only one cannot leak by sitting in the same file. CI supplies them
+from the GitHub Environment named after the branch; a hand deploy passes `--env-file`.
+Development uses one `.env` at the repository root, which `wrangler dev` (`--env-file`), Vite
+(`VITE_*` keys) and the CLI scripts all read. `env.ts` validates the variables among the
+bindings with zod at the start of every invocation and fails the request with a readable list
+of problems, by name; nothing is ever logged by value.
+
+"Where" says what the value becomes on the Worker; every `var` and `secret` is given to
+`pnpm deploy:worker` as an environment variable of the same name.
 
 | Variable | Where | Required | Notes |
 |---|---|---|---|
+| `WORKER_NAME` | deploy only | no | The Worker's name, `agrobot` by default; `agrobot-staging` for the staging deployment. |
+| `HYPERDRIVE_ID` | deploy only | yes | The id from `wrangler hyperdrive create`, one per deployment, pointing at that Neon branch's pooled connection string. |
+| `PLACEMENT_REGION` | deploy only | no | `aws:eu-central-1` by default: the Worker runs next to the database. |
 | `BOT_TOKEN` | secret | yes | AgroBot 1.0's existing token (ADR-0013). 1.0 must be stopped before 2.0 uses it — one token, one consumer. |
 | `TELEGRAM_WEBHOOK_SECRET` | secret | yes | Random 32+ chars; checked on every webhook update. |
 | `BOT_USERNAME`, `MINIAPP_SHORT_NAME` | var | yes | For deep links. `BOT_USERNAME` is 1.0's; the Mini App short name is created in @BotFather on the same bot. |
 | `PUBLIC_URL` | var | yes | HTTPS base of the Worker (`https://<name>.<account>.workers.dev` or the custom domain). The webhook is `PUBLIC_URL/telegram/webhook`; also the accepted `Origin` for sockets. |
 | `HYPERDRIVE` | binding | yes | Hyperdrive configuration pointing at Neon's pooled connection string; `env.HYPERDRIVE.connectionString` is what the driver opens. |
-| `DATABASE_URL` | `.env` / CI secret | CLI only | Direct Postgres URL for `db:migrate`, `db:seed`, `db:generate` and the integration tests (`TEST_DATABASE_URL`). In development it is also the local Hyperdrive target (`WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`). Never a Worker var. |
+| `DATABASE_URL` | `.env` / CI secret | CLI only | Direct Postgres URL for `db:migrate`, `db:seed`, `db:generate` and the integration tests (`TEST_DATABASE_URL`). In development it is also the local Hyperdrive target (`CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`). Never a Worker var. |
 | `ADMIN_TELEGRAM_IDS` | var | yes (first deploy) | Comma-separated; auto-approved as admins on `/start`. |
 | `CATALOG_SOURCE` | var | yes | `sheets` or `csv`. |
 | `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_RANGE` | var | sheets mode | Range defaults to `Productes!A:E` (PRD §6). |
@@ -469,7 +496,7 @@ list of problems; nothing is ever logged by value.
 | `DEFAULT_LOCALE` | var | no | `ca`. |
 | `TZ` | var | no | `Europe/Madrid` (display only; storage is UTC). |
 | `LOG_LEVEL` | var | no | `info`. |
-| `GIT_COMMIT` | var | no | Set by the deploy workflow (`--var GIT_COMMIT:<sha>`) for `/status` and `/health`. |
+| `GIT_COMMIT` | var | no | The deployed commit, for `/status` and `/health`; CI passes the sha, a hand deploy takes `git rev-parse`. |
 | `SENTRY_DSN` | secret | no | Enables error tracking. |
 | `DEV_AUTH_BYPASS_TELEGRAM_ID` | `.env` only | dev only | Refused when `NODE_ENV=production`. |
 
@@ -488,7 +515,8 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
 ```
 - `wrangler dev` runs the real runtime locally (workerd): the Worker, the hub with its alarms
   and sockets, static assets from `apps/miniapp/dist` when present, and a local Hyperdrive that
-  points at Docker Postgres. It reads `.env`, so there is one configuration file.
+  points at Docker Postgres (`DATABASE_URL`). `scripts/wrangler-dev.mjs` starts it with the
+  repository `.env` as its variables, so there is one configuration file.
 - The bot has no polling mode. `scripts/dev-telegram.mjs` deletes the throwaway bot's webhook,
   long-polls `getUpdates` with `BOT_TOKEN`, and POSTs every update to
   `http://localhost:8080/telegram/webhook` with the secret header. The webhook handler is the
@@ -504,24 +532,31 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
 
 - **Build.** `pnpm build` builds `shared` (tsc), the Mini App (Vite, into `apps/miniapp/dist`,
   which `wrangler.jsonc` declares as the assets directory) and validates the Worker bundle
-  (`wrangler deploy --dry-run --outdir dist`). Wrangler bundles `src/worker.ts` with esbuild;
-  the migrations folder is not shipped, it is applied from CI.
-- **CI** (`.github/workflows/ci.yml`) on every PR and on `main`: `pnpm lint`, `pnpm typecheck`,
-  `pnpm test` (unit + integration with a Postgres service container + hub tests under
-  `vitest-pool-workers`), `pnpm build`, `pnpm e2e` (Playwright against `wrangler dev` with the
-  local Hyperdrive on `agrobot_test`, the dev auth bypass and a seeded DB). GitHub Actions is
-  free for this public repository.
-- **Deploy** (`deploy` job in the same workflow, on `main` after the checks pass):
-  1. `pnpm db:migrate` against Neon (`DATABASE_URL` repository secret; forward-only).
-  2. `wrangler deploy --var GIT_COMMIT:$GITHUB_SHA` (`CLOUDFLARE_API_TOKEN`,
-     `CLOUDFLARE_ACCOUNT_ID`).
-  3. `pnpm bot:set-webhook` (`BOT_TOKEN`, `PUBLIC_URL`, `TELEGRAM_WEBHOOK_SECRET`), idempotent.
+  (`wrangler deploy --dry-run --outdir dist`), in that order. Wrangler bundles `src/worker.ts`
+  with esbuild; the migrations folder is not shipped, it is applied from CI.
+- **CI** (`.github/workflows/ci.yml`) on every PR and on `main` and `staging`: `pnpm lint`,
+  `pnpm typecheck`, `pnpm test` (unit + integration with a Postgres service container + hub
+  tests inside workerd), `pnpm build`, `pnpm e2e` (Playwright against `wrangler dev` with the
+  local Hyperdrive on `agrobot_test`, the dev auth bypass, a seeded DB and a fresh hub state).
+  GitHub Actions is free for this public repository.
+- **Deploy** (`deploy` job in the same workflow, after the checks pass, using the GitHub
+  Environment named after the branch: `main` → `production`, `staging` → `staging`):
+  1. `pnpm db:migrate` against Neon (`DATABASE_URL` environment secret, the direct string;
+     forward-only).
+  2. `pnpm deploy:worker` (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and the variables of
+     §13): generates `wrangler.deploy.jsonc`, `wrangler deploy`, then `wrangler secret bulk`
+     for `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `SENTRY_DSN`. A
+     deploy never removes a secret; the few seconds between the two uploads are the only time
+     a first deployment answers 500 for lack of them.
+  3. `pnpm bot:set-webhook` (`BOT_TOKEN`, `PUBLIC_URL`, `TELEGRAM_WEBHOOK_SECRET`), idempotent;
+     it also publishes the command menu in both languages.
 
-  Secrets on the Worker are set once with `wrangler secret put`; vars live in `wrangler.jsonc`.
-  A staging Worker (`agrobot-staging`, its own Neon branch and a throwaway bot) takes the same
-  workflow from a `staging` branch.
-- **Rollback.** `wrangler rollback` restores the previous Worker version in seconds. Migrations
-  are never rolled back; write a compensating migration.
+  The staging Worker (`WORKER_NAME=agrobot-staging`, its own Neon branch and Hyperdrive
+  configuration, a throwaway bot) is the same workflow from the `staging` branch with the
+  `staging` GitHub Environment. The README's "First-time setup" lists the one-off account
+  steps; `pnpm deploy:worker --dry-run` validates a configuration without uploading.
+- **Rollback.** `wrangler rollback --name <WORKER_NAME>` restores the previous Worker version
+  in seconds. Migrations are never rolled back; write a compensating migration.
 - **Backups.** Neon point-in-time restore, six hours on the free plan (ADR-0016). Restoring is
   creating a branch at a timestamp and re-pointing Hyperdrive at it; the M6 drill does exactly
   that against staging. There is no off-site copy (backlog item 1).
@@ -550,7 +585,7 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
 | Domain unit | Vitest | State machine guards and transitions, availability math, unit step validation, slug normalization, sheet row parsing, notification throttle logic. Ports mocked. |
 | Integration | Vitest + real Postgres | Every API route through Hono's `app.request()`; concurrency test: two parallel reservations for the last quantity, exactly one succeeds; jobs against seeded data with a fake clock. |
 | Bot | Vitest + grammY test transformer | `/start` paths (applicant, pre-approved, admin bootstrap), quick actions incl. stale ones. |
-| Hub | Vitest under `@cloudflare/vitest-pool-workers` | Next-due math (Madrid local time, DST), alarm re-arming, ticket issue/redeem/expiry, socket tagging and publish fan-out, rate counters. Jobs are mocked here; they have their own integration tests. |
+| Hub | Vitest under `@cloudflare/vitest-plugin` (inside workerd) | Alarm seeding and re-arming, `wake()`, full-batch re-run, retry backoff, `runJob` results and domain errors, ticket issue/redeem/expiry, socket tagging, publish fan-out and presence, rate counters. Next-due math (Madrid local time, DST) is a plain unit test. Jobs are a fake runner here; they have their own integration tests. |
 | Mini App | Vitest + Testing Library | Components with i18n and both languages; reserve form validation per unit. |
 | E2E | Playwright against `wrangler dev` | Two browser contexts (producer, requester): publish → appears on board → reserve → confirm → chat both ways → deliver. Admin approve flow. Runs in CI. |
 | i18n | build step | Script fails if `ca.json` and `es.json` keys differ or a key used in code is missing. |
@@ -567,6 +602,7 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
   `PUBLIC_URL`; `initData` never appears in a URL or a log.
 - Body size limits; message length limits; HTML-escape everything we send to Telegram
   (`parse_mode: 'HTML'`, one escape helper, unit-tested).
-- Secrets only as Worker secrets (`wrangler secret put`) or the local `.env`; never in
-  `wrangler.jsonc` or the repository; `env.ts` never logs values.
+- Secrets only as Worker secrets (uploaded by `pnpm deploy:worker` through `wrangler secret
+  bulk` on stdin, from the CI environment or a git-ignored `--env-file`) or the local `.env`;
+  never in `wrangler.jsonc` or the repository; `env.ts` never logs values.
 - Dependencies pinned via lockfile; `pnpm audit` in CI as non-blocking report.

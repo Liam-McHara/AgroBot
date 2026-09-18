@@ -10,7 +10,7 @@ LICENSE
 apps/server/src/db/migrations/
 playwright-report/
 test-results/
-apps/server/public/
+apps/server/.wrangler/
 
 # Markdown is hand-maintained: docs/ is the specification and is wrapped at ~100 columns by
 # hand (docs/README.md "Conventions for these documents"). Prettier re-flows lists and tables,

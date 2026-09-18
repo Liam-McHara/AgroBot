@@ -1,0 +1,58 @@
+/**
+ * AgroBot 2.0 on Cloudflare Workers (ARCH §3, §13, §15; ADR-0016, ADR-0017).
+ *
+ * One Worker (Hono API, grammY webhook, the Mini App as static assets) plus one Durable
+ * Object, `AgroBotHub`, for jobs and realtime, reaching Neon Postgres through Hyperdrive.
+ *
+ * This file holds nothing that belongs to one deployment, so any group can clone the
+ * repository and run its own AgroBot without editing it. It is what `wrangler dev` runs: no
+ * vars (the repository `.env` supplies them through `--env-file`) and a Hyperdrive that points
+ * at the Docker Postgres. Deployments go through `pnpm deploy:worker`, which copies this file
+ * to the git-ignored `wrangler.deploy.jsonc` with the name, Hyperdrive id, placement and vars
+ * taken from environment variables, and uploads the secrets separately (ARCH §13, §15).
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agrobot",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  // node:crypto, node:buffer and friends, which the code and its libraries use (ARCH §3).
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The Mini App build. Unknown paths are its hash routes, so they get index.html; the API,
+  // the webhook and /health always reach the Worker first (ARCH §3).
+  "assets": {
+    "directory": "../miniapp/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/telegram/*", "/health"],
+  },
+
+  // The one hub instance: schedule + alarm, hibernating sockets, presence, counters (ADR-0017).
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "AgroBotHub" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AgroBotHub"] }],
+
+  // Locally, Hyperdrive is a pass-through to Docker Postgres; `pnpm dev` and the e2e suite
+  // point it elsewhere with CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE. A
+  // deployment replaces the id with HYPERDRIVE_ID, the configuration created with
+  // `wrangler hyperdrive create <name> --connection-string '<Neon pooled URL>'`.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "local",
+      "localConnectionString": "postgres://agrobot:agrobot@localhost:5432/agrobot",
+    },
+  ],
+
+  // ARCH §9: a liveness check that calls hub.ensureArmed() and reads only the hub's storage.
+  "triggers": { "crons": ["*/15 * * * *"] },
+
+  // Workers Logs (free: 200 000 events/day, 3 days) for the JSON lines the logger writes.
+  "observability": { "enabled": true },
+
+  // Run next to the database so every query is a short round trip; PLACEMENT_REGION overrides
+  // it for a group whose Neon project lives elsewhere.
+  "placement": { "mode": "targeted", "region": "aws:eu-central-1" },
+}

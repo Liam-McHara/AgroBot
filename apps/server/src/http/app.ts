@@ -1,8 +1,4 @@
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
 import { Hono } from 'hono';
-import { serveStatic } from '@hono/node-server/serve-static';
 import { webhookCallback } from 'grammy';
 import type { Bot } from 'grammy';
 import { DEFAULT_LANGUAGE } from '@agrobot/shared';
@@ -12,35 +8,33 @@ import { requestLogging } from './middleware/logging.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { healthRoutes } from './routes/health.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { eventsRoutes } from './routes/events.js';
 import { meRoutes } from './routes/me.js';
 import { adminMemberRoutes } from './routes/admin-members.js';
 import type { AppContext, AppDeps } from './context.js';
 
 export interface AppOptions {
-  /** Mounted at `POST /telegram/webhook` when the bot runs in webhook mode (ARCH §4). */
+  /** Mounted at `POST /telegram/webhook`; the tests leave it out and drive the bot directly. */
   bot?: Bot;
-  /** Where the built Mini App lives, relative to the process working directory (ARCH §15). */
-  publicDir?: string;
 }
 
 /**
- * The whole HTTP surface of ARCH §1: the bot webhook, the Mini App's REST API, `/health`,
- * and the built Mini App itself on everything else.
+ * Telegram gives a webhook about as long as a request may take; a catalogue sync from `/sync`
+ * can be slow, and a retried update would run it twice.
+ */
+const WEBHOOK_TIMEOUT_MS = 25_000;
+
+/**
+ * The Worker's half of ARCH §1: the bot webhook, the Mini App's REST API, the realtime ticket
+ * and upgrade, and `/health`. The Mini App itself is served by Static Assets before a request
+ * ever reaches this code (`run_worker_first` in `wrangler.jsonc`), so an unknown path here is
+ * a miss, in the error shape of ARCH §11.
  */
 export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppContext> {
   const app = new Hono<AppContext>();
-  const publicDir = options.publicDir ?? 'public';
-  const indexHtml = resolve(process.cwd(), publicDir, 'index.html');
-  const hasMiniApp = existsSync(indexHtml);
 
   app.onError(errorHandler);
-  app.notFound(async (c) => {
-    // The Mini App is a single-page app: unknown non-API paths are its routes, not misses.
-    if (hasMiniApp && !c.req.path.startsWith('/api') && !c.req.path.startsWith('/telegram')) {
-      return c.html(await readFile(indexHtml, 'utf8'));
-    }
-    return notFoundHandler(c);
-  });
+  app.notFound(notFoundHandler);
 
   app.use('*', requestId);
   app.use('*', async (c, next) => {
@@ -49,14 +43,15 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
   });
   app.use('*', requestLogging(deps.logger));
 
-  app.route('/', healthRoutes());
+  app.route('/', healthRoutes(deps));
 
   if (options.bot) {
     // grammY verifies `X-Telegram-Bot-Api-Secret-Token` itself (ARCH §4, §17).
     app.post(
       WEBHOOK_PATH,
       webhookCallback(options.bot, 'hono', {
-        secretToken: deps.env.TELEGRAM_WEBHOOK_SECRET ?? '',
+        secretToken: deps.env.TELEGRAM_WEBHOOK_SECRET,
+        timeoutMilliseconds: WEBHOOK_TIMEOUT_MS,
       }),
     );
   }
@@ -64,10 +59,7 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
   app.route('/api', meRoutes(deps));
   app.route('/api', adminMemberRoutes(deps));
   app.route('/api', catalogRoutes(deps));
-
-  if (hasMiniApp) {
-    app.use('/*', serveStatic({ root: join('.', publicDir) }));
-  }
+  app.route('/api', eventsRoutes(deps));
 
   return app;
 }

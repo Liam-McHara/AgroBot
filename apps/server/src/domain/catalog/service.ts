@@ -20,6 +20,7 @@ import {
 import { conflict, invalidTransition, notFound, validationFailed } from '../../errors.js';
 import { assertAdmin, assertMember } from '../members/service.js';
 import { enqueueNotifications } from '../notifications/outbox.js';
+import { noopHub, type HubPort } from '../ports.js';
 import { catalogLifecycle, type CatalogLifecycle } from './lifecycle.js';
 import { parseCatalog, type CatalogRow, type ParsedCatalog } from './parser.js';
 import type { CatalogSource } from './source.js';
@@ -27,6 +28,8 @@ import type { CatalogSource } from './source.js';
 export interface CatalogDeps {
   db: Database;
   source: CatalogSource;
+  /** ADR-0017: woken after commits that enqueue N4, N5 or N12. */
+  hub?: HubPort;
   now?: () => Date;
   lifecycle?: CatalogLifecycle;
 }
@@ -35,6 +38,7 @@ export type CatalogService = ReturnType<typeof createCatalogService>;
 export function createCatalogService(deps: CatalogDeps) {
   const now = deps.now ?? (() => new Date());
   const lifecycle = deps.lifecycle ?? catalogLifecycle;
+  const hub = deps.hub ?? noopHub;
 
   async function actorFrom(tx: Transaction, actor: Member, admin: boolean): Promise<Member> {
     const [fresh] = await tx.select().from(members).where(eq(members.id, actor.id)).for('share');
@@ -55,12 +59,18 @@ export function createCatalogService(deps: CatalogDeps) {
         .where(and(eq(members.role, 'admin'), eq(members.status, 'approved')))
     ).map((m) => m.id);
   }
-  async function notifyResolution(tx: Transaction, original: Product, resolved: Product, at: Date) {
+  /** N5 to the proposer and the requesters of open reservations; returns how many rows. */
+  async function notifyResolution(
+    tx: Transaction,
+    original: Product,
+    resolved: Product,
+    at: Date,
+  ): Promise<number> {
     const requesters = await lifecycle.resolvePrice(tx, resolved, at);
     const recipients = [
       ...new Set([...(original.proposedBy ? [original.proposedBy] : []), ...requesters]),
     ];
-    await enqueueNotifications(tx, recipients, 'N5', {
+    return enqueueNotifications(tx, recipients, 'N5', {
       productId: resolved.id,
       name: resolved.name,
       decision: 'resolved',
@@ -93,6 +103,8 @@ export function createCatalogService(deps: CatalogDeps) {
       archived: 0,
       resolvedPending: 0,
       errors: [...parsed.errors],
+      /** Notification rows written in this transaction; the caller wakes the hub if any. */
+      notified: 0,
     };
     if (
       previous?.contentHash === hash &&
@@ -140,7 +152,7 @@ export function createCatalogService(deps: CatalogDeps) {
         stats.updated++;
         if (existing.status === 'pending') {
           stats.resolvedPending++;
-          await notifyResolution(tx, existing, resolved!, at);
+          stats.notified += await notifyResolution(tx, existing, resolved!, at);
         }
       }
     }
@@ -158,7 +170,8 @@ export function createCatalogService(deps: CatalogDeps) {
   async function sync(
     input: { trigger: 'schedule' } | { trigger: 'manual' | 'command'; actor: Member },
   ) {
-    return deps.db.transaction(async (tx) => {
+    let notified = 0;
+    const report = await deps.db.transaction(async (tx) => {
       await lock(tx);
       if ('actor' in input) await actorFrom(tx, input.actor, true);
       const startedAt = now();
@@ -172,7 +185,8 @@ export function createCatalogService(deps: CatalogDeps) {
       const parsed = parseCatalog(cells);
       if (parsed.rows.length === 0) return failed(parsed.errors, parsed.rowsRead, hash);
       if ('actor' in input) await actorFrom(tx, input.actor, true);
-      const stats = await applyDiff(tx, parsed, hash, now());
+      const { notified: rows, ...stats } = await applyDiff(tx, parsed, hash, now());
+      notified = rows;
       const [report] = await tx
         .insert(catalogSyncs)
         .values({
@@ -204,22 +218,29 @@ export function createCatalogService(deps: CatalogDeps) {
             contentHash,
           })
           .returning();
-        await enqueueNotifications(tx, await admins(tx), 'N12', { syncId: report!.id });
+        notified += await enqueueNotifications(tx, await admins(tx), 'N12', {
+          syncId: report!.id,
+        });
         return report!;
       }
     });
+    // ARCH §8 step 2: N5 and N12 are committed with the sync row; the hub sends them.
+    if (notified > 0) hub.wake();
+    return report;
   }
 
   async function propose(actor: Member, input: ProposeProduct): Promise<Product> {
     const parsed = proposeProductSchema.safeParse(input);
     if (!parsed.success) throw validationFailed();
-    return deps.db.transaction(async (tx) => {
+    const { product, notified } = await deps.db.transaction(async (tx) => {
       await lock(tx);
       await actorFrom(tx, actor, false);
       const slug = normalizeProductName(parsed.data.name);
       const [existing] = await tx.select().from(products).where(eq(products.slug, slug));
       if (existing) {
-        if (existing.status === 'pending' && existing.proposedBy === actor.id) return existing;
+        if (existing.status === 'pending' && existing.proposedBy === actor.id) {
+          return { product: existing, notified: 0 };
+        }
         throw conflict({ reason: 'product_name_taken' });
       }
       const [product] = await tx
@@ -235,12 +256,14 @@ export function createCatalogService(deps: CatalogDeps) {
           updatedAt: now(),
         })
         .returning();
-      await enqueueNotifications(tx, await admins(tx), 'N4', {
+      const notified = await enqueueNotifications(tx, await admins(tx), 'N4', {
         productId: product!.id,
         name: product!.name,
       });
-      return product!;
+      return { product: product!, notified };
     });
+    if (notified > 0) hub.wake();
+    return product;
   }
   async function pending(tx: Transaction, id: string) {
     const [product] = await tx.select().from(products).where(eq(products.id, id)).for('update');
@@ -251,7 +274,8 @@ export function createCatalogService(deps: CatalogDeps) {
   async function rename(actor: Member, id: string, name: string) {
     const parsed = renameProductSchema.safeParse({ name });
     if (!parsed.success) throw validationFailed();
-    return deps.db.transaction(async (tx) => {
+    let notified = 0;
+    const product = await deps.db.transaction(async (tx) => {
       await lock(tx);
       await actorFrom(tx, actor, true);
       const original = await pending(tx, id);
@@ -261,7 +285,7 @@ export function createCatalogService(deps: CatalogDeps) {
         if (target.status !== 'active' || target.source !== 'sheet')
           throw conflict({ reason: 'product_name_taken' });
         await lifecycle.merge(tx, original, target, now());
-        await notifyResolution(tx, original, target, now());
+        notified = await notifyResolution(tx, original, target, now());
         await tx
           .update(products)
           .set({ status: 'archived', updatedAt: now() })
@@ -275,9 +299,11 @@ export function createCatalogService(deps: CatalogDeps) {
         .returning();
       return updated!;
     });
+    if (notified > 0) hub.wake();
+    return product;
   }
   async function reject(actor: Member, id: string) {
-    return deps.db.transaction(async (tx) => {
+    const notified = await deps.db.transaction(async (tx) => {
       await lock(tx);
       await actorFrom(tx, actor, true);
       const product = await pending(tx, id);
@@ -285,13 +311,15 @@ export function createCatalogService(deps: CatalogDeps) {
       const recipients = [
         ...new Set([...(product.proposedBy ? [product.proposedBy] : []), ...affected]),
       ];
-      await enqueueNotifications(tx, recipients, 'N5', {
+      const rows = await enqueueNotifications(tx, recipients, 'N5', {
         productId: product.id,
         name: product.name,
         decision: 'rejected',
       });
       await tx.delete(products).where(eq(products.id, id));
+      return rows;
     });
+    if (notified > 0) hub.wake();
   }
   async function list(actor: Member, query = '', includePending = true) {
     return deps.db.transaction(async (tx) => {

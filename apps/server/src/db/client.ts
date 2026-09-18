@@ -20,10 +20,15 @@ export interface DatabaseHandle {
 }
 
 export interface DatabaseOptions {
-  /** Keep the pool small: one instance, a hundred members (ADR-0002, PRD §12). */
+  /**
+   * Connections this client may open. On the Worker it is one client per invocation over
+   * Hyperdrive, which holds the real pool (ARCH §3); the CLI scripts want a single one.
+   */
   max?: number;
   /** Migrations and one-shot scripts want a single connection and a quick exit. */
   maxLifetimeSeconds?: number;
+  /** Skip the type round trip on connect; the schema only uses types the driver knows. */
+  fetchTypes?: boolean;
 }
 
 export function createDatabase(url: string, options: DatabaseOptions = {}): DatabaseHandle {
@@ -32,6 +37,7 @@ export function createDatabase(url: string, options: DatabaseOptions = {}): Data
     ...(options.maxLifetimeSeconds === undefined
       ? {}
       : { max_lifetime: options.maxLifetimeSeconds }),
+    ...(options.fetchTypes === undefined ? {} : { fetch_types: options.fetchTypes }),
     onnotice: () => {},
   });
   return {

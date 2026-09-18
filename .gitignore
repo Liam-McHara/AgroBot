@@ -37,5 +37,7 @@ Thumbs.db
 legacy/**/*.js
 !legacy/netlify/functions/update.js
 
-# Mini App build copied next to the server for the container image (ARCH §15)
-apps/server/public/
+# wrangler's local state (the dev hub's storage, cached bundles) and the e2e suite's copy
+.wrangler/
+# The deploy configuration `pnpm deploy:worker` generates from environment variables
+apps/server/wrangler.deploy.jsonc

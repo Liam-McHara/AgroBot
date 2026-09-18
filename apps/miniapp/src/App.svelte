@@ -5,6 +5,7 @@
   import Toast from './lib/components/Toast.svelte';
   import { t } from './lib/i18n/index.svelte.js';
   import { meStore } from './lib/stores/me.svelte.js';
+  import { realtime } from './lib/stores/realtime.svelte.js';
   import { initTelegram, routeForStartParam, syncBackButton } from './lib/telegram.js';
   import Board from './routes/Board.svelte';
   import Gate from './routes/Gate.svelte';
@@ -33,6 +34,22 @@
       const target = routeForStartParam(initTelegram().startParam);
       if (target && meStore.isApproved) void push(target);
     });
+    // ARCH §7: `me.changed` refetches the profile — an approval, a role change, a new
+    // language chosen in another tab — and a reconnect refetches everything we hold.
+    const unsubscribe = [
+      realtime.on('me.changed', () => void meStore.refetch()),
+      realtime.onReconnect(() => void meStore.refetch()),
+    ];
+    return () => {
+      for (const off of unsubscribe) off();
+      realtime.stop();
+    };
+  });
+
+  // The socket needs an identity, so it opens once `/me` has answered, whatever it said:
+  // applicants wait at the gate for `me.changed` instead of polling (ADR-0016).
+  $effect(() => {
+    if (meStore.me) realtime.start();
   });
 
   $effect(() => {

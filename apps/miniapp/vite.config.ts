@@ -10,8 +10,8 @@ const { version } = JSON.parse(
 
 /**
  * The Mini App is a plain single-page Svelte app (ADR-0006). In development it runs on Vite
- * and proxies `/api` to the server so the browser sees one origin; the production build is
- * copied into the server image and served from there (ARCH §15).
+ * and proxies `/api` to the Worker on `wrangler dev` so the browser sees one origin; the
+ * production build in `dist/` is what `wrangler.jsonc` serves as static assets (ARCH §15).
  */
 export default defineConfig({
   plugins: [svelte()],
@@ -22,7 +22,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8080', changeOrigin: true },
+      // `ws: true` carries the realtime socket of ARCH §7 through the same proxy.
+      '/api': { target: 'http://localhost:8080', changeOrigin: true, ws: true },
     },
   },
   build: {

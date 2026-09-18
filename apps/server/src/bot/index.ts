@@ -3,15 +3,15 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import {
   createTranslator,
   languageFromTelegram,
-  type Language,
   type MessageKey,
   type Translator,
 } from '@agrobot/shared';
-import type { User } from 'grammy/types';
+import type { User, UserFromGetMe } from 'grammy/types';
 import type { Member } from '../db/schema/index.js';
 import type { TelegramIdentity } from '../domain/members/rules.js';
 import type { IdentifyResult } from '../domain/members/service.js';
-import { APP_VERSION, GIT_COMMIT } from '../version.js';
+import type { Env } from '../env.js';
+import { APP_VERSION, gitCommit } from '../version.js';
 import { isAppError } from '../errors.js';
 import type { AppDeps } from '../http/context.js';
 import { miniAppLink, parseQuickAction } from './deep-links.js';
@@ -20,6 +20,33 @@ import { escapeHtml } from './html.js';
 export const WEBHOOK_PATH = '/telegram/webhook';
 
 export type BotContext = Context;
+
+/** Telegram answers in seconds or not at all; a request handler has no time to wait longer. */
+const TELEGRAM_TIMEOUT_SECONDS = 20;
+
+/**
+ * What grammY would otherwise fetch with `getMe` on the first update of every isolate. The
+ * bot's id is the first half of its token and its username is configuration (ARCH §13), so
+ * the call, one Telegram subrequest per cold start, is not needed.
+ */
+export function botInfoFor(env: Pick<Env, 'BOT_TOKEN' | 'BOT_USERNAME'>): UserFromGetMe {
+  const id = Number(env.BOT_TOKEN.split(':')[0]);
+  return {
+    id: Number.isSafeInteger(id) ? id : 0,
+    is_bot: true,
+    first_name: 'AgroBot',
+    username: env.BOT_USERNAME,
+    can_join_groups: false,
+    can_read_all_group_messages: false,
+    supports_inline_queries: false,
+    can_connect_to_business: false,
+    has_main_web_app: true,
+    has_topics_enabled: false,
+    allows_users_to_create_topics: false,
+    can_manage_bots: false,
+    supports_join_request_queries: false,
+  };
+}
 
 function identityOf(from: User): TelegramIdentity {
   return {
@@ -37,7 +64,10 @@ function identityOf(from: User): TelegramIdentity {
  * points at the app, and the callback buttons run the same domain actions the API does.
  */
 export function createBot(deps: AppDeps): Bot {
-  const bot = new Bot(deps.env.BOT_TOKEN);
+  const bot = new Bot(deps.env.BOT_TOKEN, {
+    botInfo: botInfoFor(deps.env),
+    client: { timeoutSeconds: TELEGRAM_TIMEOUT_SECONDS },
+  });
 
   // Telegram answers a flood with 429 + `retry_after`; the transformer waits it out for us.
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60 }));
@@ -83,7 +113,11 @@ export function createBot(deps: AppDeps): Bot {
       const t = createTranslator(member.language);
       try {
         if (command === 'sync') {
-          const sync = await deps.catalog.sync({ trigger: 'command', actor: member });
+          // ARCH §10: the sync runs in the hub, on its CPU budget; the reply waits for it.
+          const sync = await deps.hub.runJob('catalog.sync', {
+            trigger: 'command',
+            actorId: member.id,
+          });
           await ctx.reply(
             `${t(`catalog.sync.${sync.status}`)}\n${t('catalog.sync.summary', {
               rows: sync.rowsRead,
@@ -107,7 +141,7 @@ export function createBot(deps: AppDeps): Bot {
           await ctx.reply(
             t('bot.status', {
               version: APP_VERSION,
-              commit: GIT_COMMIT,
+              commit: gitCommit(deps.env),
               members: status.members,
               offers: status.offers,
               reservations: status.reservations,
@@ -225,20 +259,4 @@ export function createBot(deps: AppDeps): Bot {
   });
 
   return bot;
-}
-
-/** The command menu Telegram shows on "/", in both languages (ADR-0007). */
-export async function registerCommands(bot: Bot, languages: readonly Language[]): Promise<void> {
-  for (const language of languages) {
-    const t = createTranslator(language);
-    await bot.api.setMyCommands(
-      [
-        { command: 'start', description: t('bot.command.start') },
-        { command: 'help', description: t('bot.command.help') },
-        { command: 'sync', description: t('bot.command.sync') },
-        { command: 'status', description: t('bot.command.status') },
-      ],
-      { language_code: language },
-    );
-  }
 }

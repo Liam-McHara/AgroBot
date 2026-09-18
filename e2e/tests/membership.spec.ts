@@ -33,8 +33,7 @@ test('a stranger waits at the gate until an admin approves them', async ({ brows
   await expect(admin.getByTestId('applicant')).toHaveCount(0);
   await expect(admin.getByText('No hi ha cap sol·licitud pendent.')).toBeVisible();
 
-  // The gate polls `/me`; the button does it now.
-  await applicant.getByRole('button', { name: 'Torna a comprovar' }).click();
+  // No click: the approval reached the applicant's socket as `me.changed` (ARCH §7).
   await expect(applicant.getByTestId('board-placeholder')).toBeVisible();
   const nav = applicant.getByRole('navigation');
   await expect(nav.getByRole('link')).toHaveCount(4);

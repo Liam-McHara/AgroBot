@@ -1,12 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * ARCH §15/§16: Playwright against the **built** server (which serves the built Mini App from
- * `apps/server/public`) with the dev auth bypass and a freshly seeded database. Run
- * `pnpm build` first; `start-server.mjs` copies the Mini App build into place, resets the
- * database and boots `apps/server/dist/index.js`.
+ * ARCH §15/§16: Playwright against `wrangler dev` — the real runtime, hub included — serving
+ * the built Mini App, with the dev auth bypass and a freshly seeded database. Run `pnpm build`
+ * first; `start-server.mjs` resets the database and boots the Worker on `:8081`.
  *
- * One worker: the scenarios share one database and one bot identity.
+ * One worker: the scenarios share one database, one hub and one bot identity.
  */
 export const E2E_PORT = Number(process.env['E2E_PORT'] ?? 8081);
 export const E2E_BASE_URL = `http://localhost:${E2E_PORT}`;
@@ -34,7 +33,8 @@ export default defineConfig({
     command: 'node e2e/start-server.mjs',
     url: `${E2E_BASE_URL}/health`,
     cwd: '..',
-    timeout: 60_000,
+    // wrangler bundles the Worker and starts workerd before /health answers.
+    timeout: 120_000,
     reuseExistingServer: false,
     env: {
       E2E_PORT: String(E2E_PORT),
