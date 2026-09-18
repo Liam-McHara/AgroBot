@@ -136,40 +136,50 @@ and a fresh hub; the first run needs `pnpm exec playwright install chromium`.
 Production is one Worker plus one Durable Object on the Workers Free plan and a Neon free
 Postgres reached through Hyperdrive. There is no container and no always-on process: jobs run
 from the Durable Object's alarm when something is due, the Mini App gets live updates over a
-WebSocket held by the same object, and GitHub Actions applies migrations and runs
-`wrangler deploy --env production` on every push to `main` (`--env staging` on every push to
-`staging`), then registers the Telegram webhook. Backups are Neon's six-hour point-in-time
-restore. The design, the free-plan budget and the deploy steps are in
+WebSocket held by the same object, and GitHub Actions applies migrations, runs
+`pnpm deploy:worker` and registers the Telegram webhook on every push to `main` (production)
+and `staging` (staging). Backups are Neon's six-hour point-in-time restore. The design, the
+free-plan budget and the deploy steps are in
 [docs/architecture.md §15](docs/architecture.md#15-build-ci-deployment).
+
+**Everything that belongs to one deployment is an environment variable**, never a tracked
+file: `pnpm deploy:worker` generates the Worker configuration from them and uploads the
+secrets. Another group of farmers can clone this repository, set its own variables and have
+its own AgroBot without touching `wrangler.jsonc`.
 
 ### First-time setup
 
-Done once per environment (`staging` first, per the roadmap), by hand, with the Cloudflare and
-Neon CLIs logged in. Nothing here is in the repository except the ids in `wrangler.jsonc`.
+Done once per environment (`staging` first, per the roadmap), with the Cloudflare and Neon
+CLIs logged in. Nothing here changes a file in the repository.
 
 1. **Neon.** Create a project in Frankfurt (`aws-eu-central-1`) with a `production` and a
    `staging` branch. For each branch note the **pooled** connection string (for Hyperdrive) and
    the **direct** one (for migrations).
 2. **Hyperdrive.** `wrangler hyperdrive create agrobot-staging --connection-string '<pooled>'`
-   and the same for `agrobot-production`; paste the returned ids into the matching
-   `hyperdrive[].id` in `apps/server/wrangler.jsonc`. Fill in `PUBLIC_URL`, `BOT_USERNAME`,
-   `ADMIN_TELEGRAM_IDS` and the catalogue vars of that environment there too.
-3. **Worker secrets.** `wrangler secret put BOT_TOKEN --env staging`, then
-   `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON` (sheets mode) and optionally
-   `SENTRY_DSN`. Staging uses a throwaway bot; production uses 1.0's token (ADR-0013).
-4. **GitHub Environment** `staging` (and later `production`) with the secrets the deploy job
-   reads: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL` (the direct Neon
-   string of that branch), `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `PUBLIC_URL`.
-5. **Push** to `staging` (or `main`). The workflow runs the checks, applies the migrations, runs
-   `wrangler deploy --env <env> --var GIT_COMMIT:<sha>` and `pnpm bot:set-webhook`. The first
-   request (or the 15-minute heartbeat) arms the hub, which imports the catalogue at once.
-6. **Seed the group settings** once: `DATABASE_URL='<direct>' pnpm db:seed` with
-   `NODE_ENV=production` so no dev members are created. Admins bootstrap themselves with
-   `/start` (`ADMIN_TELEGRAM_IDS`).
-7. Register the Mini App short name (`MINIAPP_SHORT_NAME`) on the bot in @BotFather, pointing
+   (and the same for production); note the id each command prints.
+3. **Variables.** Put the deployment's values in the GitHub Environment `staging` (later
+   `production`), or, to deploy by hand, in a git-ignored file such as `.env.staging`:
+
+   | Kind | Names |
+   |---|---|
+   | Variables | `WORKER_NAME` (default `agrobot`), `HYPERDRIVE_ID`, `PLACEMENT_REGION` (default `aws:eu-central-1`), `PUBLIC_URL` (`https://<WORKER_NAME>.<account>.workers.dev`), `BOT_USERNAME`, `MINIAPP_SHORT_NAME` (default `app`), `ADMIN_TELEGRAM_IDS`, `CATALOG_SOURCE` and its `GOOGLE_SHEET_ID` / `GOOGLE_SHEET_RANGE` or `CATALOG_CSV_URL`, `DEFAULT_LOCALE`, `LOG_LEVEL` |
+   | Secrets | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL` (the direct Neon string), `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON` (sheets mode), `SENTRY_DSN` (optional) |
+
+   Staging uses a throwaway bot; production uses 1.0's token (ADR-0013).
+4. **Deploy.** Push to `staging` (or `main`): the workflow runs the checks, applies the
+   migrations, runs `pnpm deploy:worker` and `pnpm bot:set-webhook`. By hand:
+   `pnpm db:migrate`, `pnpm deploy:worker --env-file .env.staging`,
+   `pnpm bot:set-webhook` with the same variables exported. The first request (or the
+   15-minute heartbeat) arms the hub, which imports the catalogue at once.
+5. **Seed the group settings** once: `DATABASE_URL='<direct>' NODE_ENV=production pnpm db:seed`
+   so no dev members are created. Admins bootstrap themselves with `/start`
+   (`ADMIN_TELEGRAM_IDS`).
+6. Register the Mini App short name (`MINIAPP_SHORT_NAME`) on the bot in @BotFather, pointing
    at `PUBLIC_URL`.
 
-`wrangler rollback --env <env>` undoes a bad deploy in seconds; migrations are forward-only.
+`pnpm deploy:worker --dry-run` validates a configuration without uploading anything.
+`wrangler rollback --name <WORKER_NAME>` undoes a bad deploy in seconds; migrations are
+forward-only.
 
 ## License
 

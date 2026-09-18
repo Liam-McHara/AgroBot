@@ -97,7 +97,7 @@ it is unit-testable.
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Runtime | **Cloudflare Workers** (workerd), ESM, TypeScript strict | `wrangler dev` locally (the top level of `wrangler.jsonc`), `wrangler deploy --env production` / `--env staging` from CI; `nodejs_compat` flag for the `node:crypto` / `node:buffer` the code uses. Targeted placement puts the Worker next to Neon (`aws:eu-central-1`), and the hub is created with the `weur` location hint. Node 22 stays the toolchain: pnpm, tsc, vitest, drizzle-kit, the CLI scripts. |
+| Runtime | **Cloudflare Workers** (workerd), ESM, TypeScript strict | `wrangler dev` locally on the committed `wrangler.jsonc`; `pnpm deploy:worker` from CI, which generates the deploy configuration from environment variables (§13, §15); `nodejs_compat` flag for the `node:crypto` / `node:buffer` the code uses. Targeted placement puts the Worker next to Neon (`aws:eu-central-1`), and the hub is created with the `weur` location hint. Node 22 stays the toolchain: pnpm, tsc, vitest, drizzle-kit, the CLI scripts. |
 | HTTP | **Hono** | Native on Workers; `zod-validator` for bodies. Runtime-agnostic, which is what lets integration tests drive it with `app.request()`. |
 | Bot | **grammY** | `webhookCallback(bot, "hono")` on `POST /telegram/webhook`. No polling mode: in development `scripts/dev-telegram.mjs` long-polls Telegram with the throwaway token and posts each update to the local webhook (§14). Plugins: `auto-retry` transformer for 429s; `@grammyjs/i18n` not used (we share our own catalogue). |
 | DB | **Postgres 16 on Neon** (free plan) + **Drizzle ORM** | Driver `postgres` (postgres.js) over a **Hyperdrive** binding: one client per invocation, closed in `waitUntil`. `drizzle-kit` migrations committed in `apps/server/src/db/migrations`, applied from CI (§15). |
@@ -459,17 +459,28 @@ Behaviour:
 
 ## 13. Configuration
 
-Production configuration lives on the Worker: plain values as `vars` in the `production` and
-`staging` environments of `wrangler.jsonc`, secrets set once with `wrangler secret put --env`,
-and bindings (Hyperdrive, the hub, static assets) declared in the same file. The top level of
-that file, with no vars and a Hyperdrive that points at Docker Postgres, is what `wrangler dev`
-runs. Development uses one `.env` at the repository root, which `wrangler dev` (`--env-file`),
-Vite (`VITE_*` keys) and the CLI scripts all read. `env.ts` validates the variables among the
+Nothing that belongs to one deployment is in the repository, so any group can clone it and
+run its own AgroBot from its own variables. `apps/server/wrangler.jsonc` holds only what every
+deployment shares (entry, compatibility, assets, the hub, the cron, a local Hyperdrive) and is
+what `wrangler dev` runs. `pnpm deploy:worker` (`scripts/deploy-worker.mjs`) copies it to the
+git-ignored `wrangler.deploy.jsonc` with the Worker name, the Hyperdrive id, the placement and
+the `vars` taken from environment variables, runs `wrangler deploy` with it, and uploads the
+secrets with `wrangler secret bulk` from stdin; only the variables listed below reach the
+Worker, so a development-only one cannot leak by sitting in the same file. CI supplies them
+from the GitHub Environment named after the branch; a hand deploy passes `--env-file`.
+Development uses one `.env` at the repository root, which `wrangler dev` (`--env-file`), Vite
+(`VITE_*` keys) and the CLI scripts all read. `env.ts` validates the variables among the
 bindings with zod at the start of every invocation and fails the request with a readable list
 of problems, by name; nothing is ever logged by value.
 
+"Where" says what the value becomes on the Worker; every `var` and `secret` is given to
+`pnpm deploy:worker` as an environment variable of the same name.
+
 | Variable | Where | Required | Notes |
 |---|---|---|---|
+| `WORKER_NAME` | deploy only | no | The Worker's name, `agrobot` by default; `agrobot-staging` for the staging deployment. |
+| `HYPERDRIVE_ID` | deploy only | yes | The id from `wrangler hyperdrive create`, one per deployment, pointing at that Neon branch's pooled connection string. |
+| `PLACEMENT_REGION` | deploy only | no | `aws:eu-central-1` by default: the Worker runs next to the database. |
 | `BOT_TOKEN` | secret | yes | AgroBot 1.0's existing token (ADR-0013). 1.0 must be stopped before 2.0 uses it — one token, one consumer. |
 | `TELEGRAM_WEBHOOK_SECRET` | secret | yes | Random 32+ chars; checked on every webhook update. |
 | `BOT_USERNAME`, `MINIAPP_SHORT_NAME` | var | yes | For deep links. `BOT_USERNAME` is 1.0's; the Mini App short name is created in @BotFather on the same bot. |
@@ -485,7 +496,7 @@ of problems, by name; nothing is ever logged by value.
 | `DEFAULT_LOCALE` | var | no | `ca`. |
 | `TZ` | var | no | `Europe/Madrid` (display only; storage is UTC). |
 | `LOG_LEVEL` | var | no | `info`. |
-| `GIT_COMMIT` | var | no | Set by the deploy workflow (`--var GIT_COMMIT:<sha>`) for `/status` and `/health`. |
+| `GIT_COMMIT` | var | no | The deployed commit, for `/status` and `/health`; CI passes the sha, a hand deploy takes `git rev-parse`. |
 | `SENTRY_DSN` | secret | no | Enables error tracking. |
 | `DEV_AUTH_BYPASS_TELEGRAM_ID` | `.env` only | dev only | Refused when `NODE_ENV=production`. |
 
@@ -532,17 +543,20 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
   Environment named after the branch: `main` → `production`, `staging` → `staging`):
   1. `pnpm db:migrate` against Neon (`DATABASE_URL` environment secret, the direct string;
      forward-only).
-  2. `wrangler deploy --env <env> --var GIT_COMMIT:$GITHUB_SHA` (`CLOUDFLARE_API_TOKEN`,
-     `CLOUDFLARE_ACCOUNT_ID`).
+  2. `pnpm deploy:worker` (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and the variables of
+     §13): generates `wrangler.deploy.jsonc`, `wrangler deploy`, then `wrangler secret bulk`
+     for `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `SENTRY_DSN`. A
+     deploy never removes a secret; the few seconds between the two uploads are the only time
+     a first deployment answers 500 for lack of them.
   3. `pnpm bot:set-webhook` (`BOT_TOKEN`, `PUBLIC_URL`, `TELEGRAM_WEBHOOK_SECRET`), idempotent;
      it also publishes the command menu in both languages.
 
-  Secrets on the Worker are set once with `wrangler secret put --env <env>`; vars live in the
-  environment blocks of `wrangler.jsonc`. The staging Worker (`agrobot-staging`, its own Neon
-  branch and Hyperdrive configuration, a throwaway bot) is the same workflow from the `staging`
-  branch. The README's "First-time setup" lists the one-off account steps.
-- **Rollback.** `wrangler rollback` restores the previous Worker version in seconds. Migrations
-  are never rolled back; write a compensating migration.
+  The staging Worker (`WORKER_NAME=agrobot-staging`, its own Neon branch and Hyperdrive
+  configuration, a throwaway bot) is the same workflow from the `staging` branch with the
+  `staging` GitHub Environment. The README's "First-time setup" lists the one-off account
+  steps; `pnpm deploy:worker --dry-run` validates a configuration without uploading.
+- **Rollback.** `wrangler rollback --name <WORKER_NAME>` restores the previous Worker version
+  in seconds. Migrations are never rolled back; write a compensating migration.
 - **Backups.** Neon point-in-time restore, six hours on the free plan (ADR-0016). Restoring is
   creating a branch at a timestamp and re-pointing Hyperdrive at it; the M6 drill does exactly
   that against staging. There is no off-site copy (backlog item 1).
@@ -588,6 +602,7 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
   `PUBLIC_URL`; `initData` never appears in a URL or a log.
 - Body size limits; message length limits; HTML-escape everything we send to Telegram
   (`parse_mode: 'HTML'`, one escape helper, unit-tested).
-- Secrets only as Worker secrets (`wrangler secret put`) or the local `.env`; never in
-  `wrangler.jsonc` or the repository; `env.ts` never logs values.
+- Secrets only as Worker secrets (uploaded by `pnpm deploy:worker` through `wrangler secret
+  bulk` on stdin, from the CI environment or a git-ignored `--env-file`) or the local `.env`;
+  never in `wrangler.jsonc` or the repository; `env.ts` never logs values.
 - Dependencies pinned via lockfile; `pnpm audit` in CI as non-blocking report.

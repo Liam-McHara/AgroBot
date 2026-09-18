@@ -12,7 +12,7 @@ workerd, in production and in development (`wrangler dev`); there is no Node pro
    short and they are the source of truth.
 2. Find the current milestone in `docs/roadmap.md` (first one with unchecked tasks) and read
    the PRD/architecture sections it cites under **Spec.** Read `apps/server/wrangler.jsonc`
-   too: it is where the bindings, the cron and the environments live.
+   too: it is where the bindings, the cron and the assets live.
 3. Only then write code.
 
 ## Non-negotiables
@@ -78,6 +78,8 @@ pnpm dev:telegram                    # the forwarder alone (deletes the throwawa
                                      #   long-polls, POSTs updates to the local webhook)
 pnpm bot:set-webhook                 # register PUBLIC_URL/telegram/webhook + the command menu
                                      #   (tunnels and production; stop the forwarder first)
+pnpm deploy:worker [--env-file f]    # deploy from environment variables (CI does this);
+                                     #   --dry-run validates without uploading
 pnpm db:generate                     # new migration after editing src/db/schema
 pnpm format                          # prettier --write
 pnpm --filter @agrobot/server test:hub          # only the Durable Object tests
@@ -89,9 +91,11 @@ the same Postgres and a prior `pnpm build`; it resets that database, serves a CS
 boots `wrangler dev` on `:8081` with the dev auth bypass and a fresh hub state.
 
 The server pins **Vitest 4** (the Cloudflare plugin requires it) while `shared` and the Mini App
-are on Vitest 5; both run from `pnpm test`. Deploys are `wrangler deploy --env production`
-(from `main`) and `--env staging` (from `staging`), done by CI (ARCH §15); the top level of
-`wrangler.jsonc` is what `wrangler dev` runs.
+are on Vitest 5; both run from `pnpm test`. `wrangler.jsonc` holds nothing deployment-specific
+and is what `wrangler dev` runs; `pnpm deploy:worker` generates the git-ignored
+`wrangler.deploy.jsonc` from environment variables (name, Hyperdrive id, placement, vars),
+runs `wrangler deploy` with it and uploads the secrets (ARCH §13, §15). CI does that from
+`main` (production) and `staging` (staging) with the GitHub Environment of the same name.
 
 Catalogue development: configure `CATALOG_SOURCE=sheets` with the service-account variables,
 or `CATALOG_SOURCE=csv` with `CATALOG_CSV_URL` (see README). Sync runs at minute 7 of every

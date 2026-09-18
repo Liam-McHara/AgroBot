@@ -148,13 +148,16 @@ always-on process left in the code, and the dev loop, CI and e2e run against the
 **Tasks**
 - [ ] Accounts: Neon project (Frankfurt, `aws-eu-central-1`) with `production` and `staging`
       branches; a Hyperdrive configuration per branch pointing at the pooled connection string;
-      the Worker secrets with `wrangler secret put --env`; the GitHub Environments with the
-      deploy secrets. _Manual, needs the owner's Cloudflare and Neon accounts; the steps are
-      README "First-time setup". Everything below is ready for it._
+      the GitHub Environments `staging` and `production` with the deployment's variables and
+      secrets (the deploy script uploads the Worker secrets from them). _Manual, needs the
+      owner's Cloudflare and Neon accounts; the steps are README "First-time setup". Nothing in
+      the repository changes for it._
 - [x] `apps/server/wrangler.jsonc` with the assets, Hyperdrive and Durable Object bindings, the
-      `nodejs_compat` flag, targeted placement in the database's region, `observability.enabled`,
-      the 15-minute heartbeat cron, and `staging` and `production` environments (plain values as
-      `vars`, ids to fill in once the accounts exist).
+      `nodejs_compat` flag, targeted placement in the database's region, `observability.enabled`
+      and the 15-minute heartbeat cron, and nothing deployment-specific: `pnpm deploy:worker`
+      generates the deploy configuration (name, Hyperdrive id, placement, vars) from environment
+      variables and uploads the secrets, so another group can clone the repository and run its
+      own AgroBot without editing a tracked file.
 - [x] Worker entry `src/worker.ts`: `fetch` builds the deps per request (env from bindings, a
       postgres.js client on `env.HYPERDRIVE.connectionString` closed in `waitUntil`) and mounts
       the Hono app; `env.ts` takes a bindings object and loses `BOT_MODE`, `PORT`, `LOG_PRETTY`;
@@ -189,10 +192,11 @@ always-on process left in the code, and the dev loop, CI and e2e run against the
       for tunnels and production. One `.env`, read by wrangler, Vite and the scripts.
 - [x] CI: `wrangler deploy --dry-run` inside `pnpm build`; e2e boots `wrangler dev` (local
       Hyperdrive → `agrobot_test`) instead of `node dist/index.js`; a `deploy` job on `main`
-      (and `staging`) after the checks runs `pnpm db:migrate` against Neon,
-      `wrangler deploy --env <env> --var GIT_COMMIT`, then `pnpm bot:set-webhook`. Environment
-      secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `BOT_TOKEN`,
-      `TELEGRAM_WEBHOOK_SECRET`, `PUBLIC_URL`.
+      (and `staging`) after the checks runs `pnpm db:migrate` against Neon, `pnpm deploy:worker`,
+      then `pnpm bot:set-webhook`, all from the GitHub Environment of the same name: variables
+      for the plain values (`WORKER_NAME`, `HYPERDRIVE_ID`, `PUBLIC_URL`, `BOT_USERNAME`, …) and
+      secrets for `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `BOT_TOKEN`,
+      `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `SENTRY_DSN`.
 - [ ] First deploy to the **staging** Worker with a throwaway bot and the Neon `staging`
       branch: `/start`, approval from a quick action, a catalogue sync from a test sheet, one
       realtime event, and the Neon console showing compute suspended between interactions.
@@ -222,10 +226,11 @@ staging deploy and the Neon autosuspend observation, which need the accounts.
 
 **Spec corrections made in this milestone:** applicants may open the realtime socket so the
 gate no longer polls `/me` (ARCH §4, §7, §11); a failing job is retried by the hub with the
-outbox's backoff rather than by the platform (ARCH §9); deploys target named wrangler
-environments (`--env production|staging`) so `wrangler dev` never sees production values
+outbox's backoff rather than by the platform (ARCH §9); deployment values are environment
+variables consumed by `pnpm deploy:worker` rather than `vars` in `wrangler.jsonc`, so the
+repository holds nothing group-specific and `wrangler dev` never sees production values
 (ARCH §3, §13, §15); placement is targeted at `aws:eu-central-1`, which Cloudflare supports
-directly (ARCH §3).
+directly, overridable with `PLACEMENT_REGION` (ARCH §3).
 
 ---
 
