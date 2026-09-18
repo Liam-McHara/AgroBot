@@ -146,54 +146,60 @@ always-on process left in the code, and the dev loop, CI and e2e run against the
 **Spec.** ARCH §1–§3, §7–§9, §13–§17 · PRD §12 · ADR-0016 (hosting), ADR-0017 (hub).
 
 **Tasks**
-- [ ] Accounts and bindings: Neon project (Frankfurt, `aws-eu-central-1`) with `production` and
-      `staging` branches; a Hyperdrive configuration per branch pointing at the pooled
-      connection string; `apps/server/wrangler.jsonc` with the assets, Hyperdrive and Durable
-      Object bindings, the `nodejs_compat` flag, `placement` in the database's region,
-      `observability.enabled`, the 15-minute heartbeat cron, and a `staging` environment.
-      Secrets with `wrangler secret put`; plain values as `vars`.
-- [ ] Worker entry `src/worker.ts`: `fetch` builds the deps per request (env from bindings, a
+- [ ] Accounts: Neon project (Frankfurt, `aws-eu-central-1`) with `production` and `staging`
+      branches; a Hyperdrive configuration per branch pointing at the pooled connection string;
+      the Worker secrets with `wrangler secret put --env`; the GitHub Environments with the
+      deploy secrets. _Manual, needs the owner's Cloudflare and Neon accounts; the steps are
+      README "First-time setup". Everything below is ready for it._
+- [x] `apps/server/wrangler.jsonc` with the assets, Hyperdrive and Durable Object bindings, the
+      `nodejs_compat` flag, targeted placement in the database's region, `observability.enabled`,
+      the 15-minute heartbeat cron, and `staging` and `production` environments (plain values as
+      `vars`, ids to fill in once the accounts exist).
+- [x] Worker entry `src/worker.ts`: `fetch` builds the deps per request (env from bindings, a
       postgres.js client on `env.HYPERDRIVE.connectionString` closed in `waitUntil`) and mounts
       the Hono app; `env.ts` takes a bindings object and loses `BOT_MODE`, `PORT`, `LOG_PRETTY`;
       the Mini App is served by Static Assets (`single-page-application`, `run_worker_first` for
       `/api/*`, `/telegram/*`, `/health`), so `app.ts` loses `serveStatic` and the SPA fallback.
-- [ ] `realtime/hub.ts`: Durable Object `AgroBotHub` (SQLite) with the `schedule(job, due_at)`
+- [x] `realtime/hub.ts`: Durable Object `AgroBotHub` (SQLite) with the `schedule(job, due_at)`
       table and a single alarm; `wake()`, `ensureArmed()`, `runJob(name)`; next-occurrence math
-      in Europe/Madrid for periodic jobs; deadline lookups for dispatch/remind/expire; tests
-      under `@cloudflare/vitest-pool-workers` with a fake clock, including DST days.
-- [ ] Jobs on the hub: `notifications.dispatch` in batches of 20, immediate re-arm while rows
+      in Europe/Madrid for periodic jobs (`jobs/schedule.ts`); deadline lookups for
+      dispatch/remind/expire (`jobs/deadlines.ts`); tests under `@cloudflare/vitest-plugin` with
+      a fake clock, and unit tests of the math on both DST days.
+- [x] Jobs on the hub: `notifications.dispatch` in batches of 20, immediate re-arm while rows
       remain, retries at `next_attempt_at`; `catalog.sync` hourly and on demand (`/sync` and
-      `POST /admin/catalog/sync` await `hub.runJob`); delete `jobs/scheduler.ts`. Domain code
+      `POST /admin/catalog/sync` await `hub.runJob`); `jobs/scheduler.ts` deleted. Domain code
       calls `hub.wake()` after commits that enqueue; integration tests keep calling the job
       functions directly.
-- [ ] WebSocket hub: `POST /api/events/ticket` (random, single-use, 30 s, stored in the hub),
+- [x] WebSocket hub: `POST /api/events/ticket` (random, single-use, 30 s, stored in the hub),
       `GET /api/events?ticket=` upgrade with `Origin` check forwarded to the hub, Hibernation
       API with member tags, `publish(memberIds, event)`, `isViewing`, per-member rate counters.
       Mini App realtime store (one `WebSocket`, reconnect with backoff, `{viewing}` messages)
       behind the same `refetch()` interface; `me.changed` on `PATCH /me` proves the path end to
-      end.
-- [ ] Replace `googleapis` with `integrations/google-sheets.ts` on `fetch` + WebCrypto (RS256
+      end (Playwright, two contexts).
+- [x] Replace `googleapis` with `integrations/google-sheets.ts` on `fetch` + WebCrypto (RS256
       JWT → access token → `values.get`), same `CatalogSource` interface, tests with a mocked
-      `fetch`. Replace `pino` with the JSON console logger behind the existing `Logger` type.
-- [ ] Remove the Node runtime: `src/index.ts`, `@hono/node-server`, polling mode, `Dockerfile`,
+      `fetch` that verifies the signature. Replace `pino` with the JSON console logger behind
+      the existing `Logger` type.
+- [x] Remove the Node runtime: `src/index.ts`, `@hono/node-server`, polling mode, `Dockerfile`,
       `.dockerignore`. Keep `tsx` and `drizzle-kit` for `db:migrate`, `db:seed`, `db:generate`
       and the scripts, which stay Node CLIs.
-- [ ] Dev loop: `pnpm dev` = `wrangler dev --port 8080` + `vite` + `scripts/dev-telegram.mjs`
+- [x] Dev loop: `pnpm dev` = `wrangler dev --port 8080` + `vite` + `scripts/dev-telegram.mjs`
       (deletes the throwaway bot's webhook, long-polls `getUpdates`, POSTs each update to the
       local webhook with the secret header); `scripts/set-webhook.mjs` as `pnpm bot:set-webhook`
       for tunnels and production. One `.env`, read by wrangler, Vite and the scripts.
-- [ ] CI: `wrangler deploy --dry-run` inside `pnpm build`; e2e boots `wrangler dev` (local
+- [x] CI: `wrangler deploy --dry-run` inside `pnpm build`; e2e boots `wrangler dev` (local
       Hyperdrive → `agrobot_test`) instead of `node dist/index.js`; a `deploy` job on `main`
-      after the checks runs `pnpm db:migrate` against Neon, `wrangler deploy --var GIT_COMMIT`,
-      then `pnpm bot:set-webhook`. Repository secrets: `CLOUDFLARE_API_TOKEN`,
-      `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
-      `PUBLIC_URL`.
+      (and `staging`) after the checks runs `pnpm db:migrate` against Neon,
+      `wrangler deploy --env <env> --var GIT_COMMIT`, then `pnpm bot:set-webhook`. Environment
+      secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `BOT_TOKEN`,
+      `TELEGRAM_WEBHOOK_SECRET`, `PUBLIC_URL`.
 - [ ] First deploy to the **staging** Worker with a throwaway bot and the Neon `staging`
       branch: `/start`, approval from a quick action, a catalogue sync from a test sheet, one
       realtime event, and the Neon console showing compute suspended between interactions.
-- [ ] Docs brought in line with what shipped: README getting started and deployment, AGENTS.md
-      commands, ARCH §13–§15; check ADR-0016/0017's consequences against reality and add a
-      new ADR if one turned out wrong.
+      _Blocked on the accounts task above; push to `staging` once it is done._
+- [x] Docs brought in line with what shipped: README getting started and deployment, AGENTS.md
+      commands (and a `CLAUDE.md` that imports it), ARCH §2–§4, §7, §9, §11, §13–§16; ADR-0016
+      and ADR-0017's consequences checked against the code and found to hold, so no new ADR.
 
 **Definition of done**
 - `pnpm install && docker compose up -d && pnpm db:migrate && pnpm db:seed && pnpm dev` from a
@@ -204,8 +210,22 @@ always-on process left in the code, and the dev loop, CI and e2e run against the
   catalogue sync and a notification fan-out to 25 test members complete inside the hub without
   hitting the CPU or subrequest limits; the Neon console shows compute suspended between
   interactions.
-- No `setInterval`/`setTimeout` schedule anywhere, and
-  `grep -ri "railway\|@hono/node-server\|googleapis\|pino" apps` finds nothing.
+- No `setInterval`/`setTimeout` schedule anywhere in the server, and
+  `grep -riE "railway|@hono/node-server|from 'googleapis|pino" apps` finds nothing (the Sheets
+  REST hostnames end in `googleapis.com`; the library is what must be gone).
+
+**Verified in M2.5 (code):** `pnpm lint`, `pnpm typecheck`, `pnpm test` (shared 27, Mini App
+35, server 218 on Node plus 13 hub tests inside workerd) and `pnpm build` pass; `pnpm e2e`
+passes the membership, catalogue and realtime flows against `wrangler dev`. The grep gate is
+empty and the only timers left are the Mini App's reconnect backoff. **Not yet verified:** the
+staging deploy and the Neon autosuspend observation, which need the accounts.
+
+**Spec corrections made in this milestone:** applicants may open the realtime socket so the
+gate no longer polls `/me` (ARCH §4, §7, §11); a failing job is retried by the hub with the
+outbox's backoff rather than by the platform (ARCH §9); deploys target named wrangler
+environments (`--env production|staging`) so `wrangler dev` never sees production values
+(ARCH §3, §13, §15); placement is targeted at `aws:eu-central-1`, which Cloudflare supports
+directly (ARCH §3).
 
 ---
 

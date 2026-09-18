@@ -49,7 +49,8 @@ Rules:
 Paste something like this as the first message (adjust the milestone):
 
 > We are building AgroBot 2.0 in this repository following the spec in `docs/`.
-> Read `AGENTS.md`, `docs/README.md`, `docs/prd.md`, `docs/architecture.md` and the ADRs,
+> Read `AGENTS.md` (which `CLAUDE.md` imports), `docs/README.md`, `docs/prd.md`,
+> `docs/architecture.md` and the ADRs,
 > then read `docs/roadmap.md` and implement **M0 — Foundation** completely.
 > Work on a branch named `m0-foundation`, commit in small steps, keep `pnpm lint typecheck test build`
 > green, update the roadmap check boxes and AGENTS.md commands as you go, and stop when the

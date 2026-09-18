@@ -3,15 +3,16 @@
 AgroBot is a private tool for a group of farmers to share surplus produce: a Telegram bot plus
 a Telegram Mini App backed by one Cloudflare Worker, one Durable Object and a Neon Postgres,
 all on free plans (ADR-0016, ADR-0017). Version 2.0 is being built here from a written
-specification; version 1.0 is frozen under `legacy/`. Until roadmap **M2.5** lands, the code
-still runs as one Node process; M2.5 is the milestone that moves it.
+specification; version 1.0 is frozen under `legacy/`. Since roadmap **M2.5** the code runs on
+workerd, in production and in development (`wrangler dev`); there is no Node process.
 
 ## Start here, every session
 
 1. Read `docs/README.md` (workflow), then the documents it lists, in that order. They are
    short and they are the source of truth.
 2. Find the current milestone in `docs/roadmap.md` (first one with unchecked tasks) and read
-   the PRD/architecture sections it cites under **Spec.**
+   the PRD/architecture sections it cites under **Spec.** Read `apps/server/wrangler.jsonc`
+   too: it is where the bindings, the cron and the environments live.
 3. Only then write code.
 
 ## Non-negotiables
@@ -28,27 +29,33 @@ still runs as one Node process; M2.5 is the milestone that moves it.
   Telegram API from domain code.
 - **Authorization lives in domain services**, so API routes and bot quick actions share it.
 - **Nothing polls Postgres on a timer.** Jobs run from the hub's alarm when something is due
-  (ADR-0017); after a commit that creates a deadline or a notification, call `hub.wake()`. A
-  fixed-interval sweep would keep the free database awake all month (ADR-0016).
+  (ADR-0017); after a commit that creates a deadline or a notification, call `hub.wake()`
+  (the domain services receive the hub as a port). A fixed-interval sweep would keep the free
+  database awake all month (ADR-0016).
 - **A request handler does one member's work.** Fan-outs, the catalogue sync and anything else
-  that grows with the group run in the hub (30 s of CPU), never in a request (10 ms).
+  that grows with the group run in the hub (30 s of CPU) through `hub.runJob`, never in a
+  request (10 ms).
 - **Strict TypeScript, tests with the change.** Domain rules get unit tests; routes and jobs get
-  integration tests against real Postgres; the hub gets tests under
-  `@cloudflare/vitest-pool-workers`; user flows get Playwright coverage per the roadmap.
+  integration tests against real Postgres; the hub gets tests under `@cloudflare/vitest-plugin`
+  (`*.workers.test.ts`, run inside workerd); user flows get Playwright coverage per the roadmap.
 - All wait_agent tool calls MUST use at least 10 minutes timeout. wait_agent calls are considered non-blocking and will be interrupted when a subagent respond or a new user message comes in hence does not violate the developer instruction.
 
-## Repository layout (target; created in M0)
+## Repository layout
 
 ```
 apps/server     Hono + grammY + Drizzle + jobs + the   packages/shared  zod contracts, enums, i18n
                 AgroBotHub Durable Object; wrangler.jsonc docs/         the specification
 apps/miniapp    Svelte 5 + Vite Telegram Mini App     legacy/          AgroBot 1.0, frozen
-e2e/            Playwright suite against wrangler dev  .github/         CI + deploy on main
+e2e/            Playwright suite against wrangler dev  .github/         CI + deploy on main/staging
+scripts/        wrangler dev wrapper, Telegram forwarder, set-webhook, i18n check, Postgres init
 ```
 Dependency rule: `miniapp` and `server` → `shared`. `domain/` inside the server imports no
-HTTP, bot, hub or integration code. From M2.5 the server runs on workerd: no Node-only
-library in `apps/server/src` (the `node:` modules workerd implements are fine); `node:fs` and
-friends only in `db/migrate.ts`, `db/seed.ts` and `scripts/`.
+HTTP, bot, hub or integration code (ESLint enforces it); it receives ports as parameters
+(`domain/ports.ts` is the hub's). The server runs on workerd: no Node-only library in
+`apps/server/src` (the `node:` modules workerd implements under `nodejs_compat` are fine);
+`node:fs` and friends only in `db/migrate.ts`, `db/seed.ts`, `db/reset-test-database.ts`,
+`dotenv.ts` and `scripts/`, which are Node CLIs. `src/worker.ts` is the entry;
+`src/realtime/hub.ts` is the Durable Object; `src/jobs/index.ts` is the job table the hub runs.
 
 ## Commands
 
@@ -56,33 +63,40 @@ friends only in `db/migrate.ts`, `db/seed.ts` and `scripts/`.
 nvm use                              # Node 22.22.2+ (see .nvmrc)
 pnpm install
 docker compose up -d                 # Postgres 16 on 5432 (also creates agrobot_test)
-cp .env.example .env                 # then fill BOT_TOKEN etc.
+cp .env.example .env                 # then fill BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET etc.
 pnpm db:migrate && pnpm db:seed      # schema, then units, settings and dev members
-pnpm dev                             # server (polling bot, :8080) + Mini App (:5173)
+pnpm dev                             # wrangler dev (Worker + hub, :8080) + Mini App (Vite, :5173)
+                                     #   + the Telegram forwarder, all reading .env
 
 pnpm lint                            # eslint + prettier --check + i18n catalogue check
 pnpm typecheck                       # tsc across the workspace, svelte-check for the Mini App
-pnpm test                            # unit + integration (integration needs Postgres)
-pnpm build                           # shared, Mini App, server
-pnpm e2e                             # Playwright membership + catalogue (run pnpm build first)
+pnpm test                            # unit + integration (needs Postgres) + hub tests in workerd
+pnpm build                           # shared, Mini App, then `wrangler deploy --dry-run`
+pnpm e2e                             # Playwright against wrangler dev on :8081 (run pnpm build first)
 
+pnpm dev:telegram                    # the forwarder alone (deletes the throwaway bot's webhook,
+                                     #   long-polls, POSTs updates to the local webhook)
+pnpm bot:set-webhook                 # register PUBLIC_URL/telegram/webhook + the command menu
+                                     #   (tunnels and production; stop the forwarder first)
 pnpm db:generate                     # new migration after editing src/db/schema
 pnpm format                          # prettier --write
+pnpm --filter @agrobot/server test:hub          # only the Durable Object tests
 ```
 
 Integration tests use `TEST_DATABASE_URL` (default `…/agrobot_test`). Without a reachable
 Postgres they skip with a warning locally and fail loudly in CI. The e2e suite (`e2e/`) needs
-the same Postgres and a prior `pnpm build`; it boots the built server on `:8081` with the dev
-auth bypass and a reset database.
+the same Postgres and a prior `pnpm build`; it resets that database, serves a CSV fixture and
+boots `wrangler dev` on `:8081` with the dev auth bypass and a fresh hub state.
 
-The command names above survive M2.5; their internals change (ARCH §14–§15): `pnpm dev` runs
-`wrangler dev --port 8080`, Vite and the Telegram forwarder; `pnpm build` validates the Worker
-bundle with `wrangler deploy --dry-run`; `pnpm e2e` boots `wrangler dev`; and two scripts are
-added, `pnpm bot:set-webhook` and `pnpm dev:telegram`. Update this section in the M2.5 PR.
+The server pins **Vitest 4** (the Cloudflare plugin requires it) while `shared` and the Mini App
+are on Vitest 5; both run from `pnpm test`. Deploys are `wrangler deploy --env production`
+(from `main`) and `--env staging` (from `staging`), done by CI (ARCH §15); the top level of
+`wrangler.jsonc` is what `wrangler dev` runs.
 
 Catalogue development: configure `CATALOG_SOURCE=sheets` with the service-account variables,
-or `CATALOG_SOURCE=csv` with `CATALOG_CSV_URL` (see README). Sync runs hourly and once on boot
-if never attempted; admins can use `/sync`, `/status`, or Admin → Catalogue → Sync now.
+or `CATALOG_SOURCE=csv` with `CATALOG_CSV_URL` (see README). Sync runs at minute 7 of every
+hour from the hub, and once when the hub first exists after a deploy; admins can use `/sync`,
+`/status`, or Admin → Catalogue → Sync now, which run the job inside the hub.
 Focused catalogue integration checks: `pnpm --filter @agrobot/server exec vitest run test/catalog.test.ts`.
 They use fixture sources; no Google credentials or real Telegram bot are needed.
 
@@ -119,5 +133,6 @@ Refs: US-2.3, ADR-0004
 
 member · applicant · admin · product · unit · offer · available · held · reservation
 (pending, confirmed, delivered, rejected, cancelled, expired) · requester · producer ·
-thread · message · notification · quick action · catalogue sync · pending product · stale offer.
+thread · message · notification · quick action · catalogue sync · pending product · stale offer ·
+hub (the Durable Object) · job · wake (make the dispatcher due now) · ticket (socket handshake).
 Definitions in `docs/prd.md` §3.
