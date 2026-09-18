@@ -1,22 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import type { MemberStatus } from '@agrobot/shared';
   import { t } from '../lib/i18n/index.svelte.js';
   import { meStore } from '../lib/stores/me.svelte.js';
 
   /**
    * ARCH §12 `/gate`: the closed door of PRD §2 for applicants, rejected and suspended people.
-   * It polls `GET /me` so an approval given while the screen is open lets them in without a
-   * relaunch (SSE arrives in M3).
+   * An approval given while the screen is open arrives as `me.changed` on the realtime socket
+   * (ARCH §7) and the shell refetches `/me`; the button is for the impatient.
    */
   let { status }: { status: Exclude<MemberStatus, 'approved'> } = $props();
-
-  const POLL_MS = 15_000;
-
-  onMount(() => {
-    const timer = setInterval(() => void meStore.refetch(), POLL_MS);
-    return () => clearInterval(timer);
-  });
 
   const icon = $derived({ pending: '⏳', rejected: '🚪', suspended: '⛔' }[status]);
 </script>

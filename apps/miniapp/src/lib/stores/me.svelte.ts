@@ -5,7 +5,8 @@ import { setLanguage } from '../i18n/index.svelte.js';
 
 /**
  * The `GET /me` store (ARCH §12). Svelte 5 runes, one instance for the whole app: every
- * screen reads the same profile and `refetch()` is what the SSE store will call from M3.
+ * screen reads the same profile and `refetch()` is what the realtime store calls on
+ * `me.changed` (ARCH §7).
  */
 class MeStore {
   me = $state<Me | null>(null);
