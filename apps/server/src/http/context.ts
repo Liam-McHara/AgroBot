@@ -5,14 +5,20 @@ import type { Env } from '../env.js';
 import type { Logger } from '../logger.js';
 import type { Member } from '../db/schema/index.js';
 import type { MembersService } from '../domain/members/service.js';
+import type { Hub } from '../realtime/port.js';
 
-/** Everything the HTTP layer and the bot are handed at construction time. No singletons. */
+/**
+ * Everything the HTTP layer and the bot are handed at construction time. No singletons: the
+ * Worker builds one of these per request (ARCH §3), the tests build one per suite.
+ */
 export interface AppDeps {
   readonly db: Database;
   readonly env: Env;
   readonly logger: Logger;
   readonly members: MembersService;
   readonly catalog: CatalogService;
+  /** The one hub (ADR-0017): jobs on demand, socket tickets, and the upgrade hand-off. */
+  readonly hub: Hub;
 }
 
 export interface AppVariables {

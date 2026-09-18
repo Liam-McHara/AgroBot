@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { EnvError, devAuthBypassId, parseEnv } from './env.js';
+import { EnvError, allowedSocketOrigins, devAuthBypassId, parseEnv } from './env.js';
 
 const MINIMAL = {
   BOT_TOKEN: '123:abc',
   BOT_USERNAME: 'AgroBot',
   MINIAPP_SHORT_NAME: 'app',
-  BOT_MODE: 'polling',
-  DATABASE_URL: 'postgres://localhost/agrobot',
+  PUBLIC_URL: 'https://agrobot.test',
+  TELEGRAM_WEBHOOK_SECRET: 'x'.repeat(32),
   CATALOG_SOURCE: 'csv',
   CATALOG_CSV_URL: 'https://example.test/catalog.csv',
-} satisfies NodeJS.ProcessEnv;
+} satisfies Record<string, string>;
 
-function problemsOf(source: NodeJS.ProcessEnv): string[] {
+function problemsOf(source: Record<string, unknown>): string[] {
   try {
     parseEnv(source);
     return [];
@@ -24,19 +24,31 @@ function problemsOf(source: NodeJS.ProcessEnv): string[] {
 describe('parseEnv', () => {
   it('applies the defaults of ARCH §13', () => {
     const env = parseEnv(MINIMAL);
-    expect(env.PORT).toBe(8080);
+    expect(env.NODE_ENV).toBe('development');
     expect(env.LOG_LEVEL).toBe('info');
     expect(env.DEFAULT_LOCALE).toBe('ca');
     expect(env.TZ).toBe('Europe/Madrid');
     expect(env.GOOGLE_SHEET_RANGE).toBe('Productes!A:E');
+    expect(env.GIT_COMMIT).toBe('dev');
     expect(env.ADMIN_TELEGRAM_IDS).toEqual([]);
   });
 
   it('lists every missing required variable at once', () => {
     const problems = problemsOf({});
     expect(problems.join('\n')).toContain('BOT_TOKEN');
-    expect(problems.join('\n')).toContain('DATABASE_URL');
-    expect(problems.length).toBeGreaterThan(2);
+    expect(problems.join('\n')).toContain('PUBLIC_URL');
+    expect(problems.join('\n')).toContain('TELEGRAM_WEBHOOK_SECRET');
+    expect(problems.length).toBeGreaterThan(3);
+  });
+
+  it('ignores the bindings that share the object with the variables', () => {
+    const env = parseEnv({
+      ...MINIMAL,
+      HYPERDRIVE: { connectionString: 'postgres://secret' },
+      HUB: { idFromName: () => 'x' },
+    });
+    expect(env.BOT_TOKEN).toBe('123:abc');
+    expect(env).not.toHaveProperty('HYPERDRIVE');
   });
 
   it('parses ADMIN_TELEGRAM_IDS as a comma-separated list', () => {
@@ -52,30 +64,13 @@ describe('parseEnv', () => {
     );
   });
 
-  it('requires PUBLIC_URL and a webhook secret in webhook mode', () => {
-    const problems = problemsOf({ ...MINIMAL, BOT_MODE: 'webhook' });
-    expect(problems.join('\n')).toContain('PUBLIC_URL');
-    expect(problems.join('\n')).toContain('TELEGRAM_WEBHOOK_SECRET');
-  });
-
   it('requires a webhook secret long enough to be a secret (ARCH §13)', () => {
-    const problems = problemsOf({
-      ...MINIMAL,
-      BOT_MODE: 'webhook',
-      PUBLIC_URL: 'https://agrobot.test',
-      TELEGRAM_WEBHOOK_SECRET: 'short',
-    });
+    const problems = problemsOf({ ...MINIMAL, TELEGRAM_WEBHOOK_SECRET: 'short' });
     expect(problems.join('\n')).toContain('TELEGRAM_WEBHOOK_SECRET');
   });
 
-  it('accepts a complete webhook configuration', () => {
-    const env = parseEnv({
-      ...MINIMAL,
-      BOT_MODE: 'webhook',
-      PUBLIC_URL: 'https://agrobot.test',
-      TELEGRAM_WEBHOOK_SECRET: 'x'.repeat(32),
-    });
-    expect(env.BOT_MODE).toBe('webhook');
+  it('requires PUBLIC_URL to be a URL', () => {
+    expect(problemsOf({ ...MINIMAL, PUBLIC_URL: 'agrobot' }).join('\n')).toContain('PUBLIC_URL');
   });
 
   it('requires the sheet variables in sheets mode', () => {
@@ -102,6 +97,11 @@ describe('parseEnv', () => {
     });
     expect(problems.join('\n')).toContain('DEV_AUTH_BYPASS_TELEGRAM_ID');
   });
+
+  it('never carries a variable value in its problems', () => {
+    const problems = problemsOf({ ...MINIMAL, BOT_TOKEN: '', PUBLIC_URL: 'not a url' });
+    expect(problems.join('\n')).not.toContain('not a url');
+  });
 });
 
 describe('devAuthBypassId', () => {
@@ -112,5 +112,21 @@ describe('devAuthBypassId', () => {
 
   it('is undefined when nothing is configured', () => {
     expect(devAuthBypassId(parseEnv(MINIMAL))).toBeUndefined();
+  });
+});
+
+describe('allowedSocketOrigins (ARCH §7, §17)', () => {
+  it('is only PUBLIC_URL in production', () => {
+    const env = parseEnv({ ...MINIMAL, NODE_ENV: 'production' });
+    expect(allowedSocketOrigins(env)).toEqual(['https://agrobot.test']);
+  });
+
+  it('adds the local dev servers outside production, without duplicates', () => {
+    const origins = allowedSocketOrigins(
+      parseEnv({ ...MINIMAL, PUBLIC_URL: 'http://localhost:8080' }),
+    );
+    expect(origins[0]).toBe('http://localhost:8080');
+    expect(origins).toContain('http://localhost:5173');
+    expect(new Set(origins).size).toBe(origins.length);
   });
 });
