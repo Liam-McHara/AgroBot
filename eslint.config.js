@@ -19,8 +19,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.svelte-kit/**',
       'apps/server/src/db/migrations/**',
-      // The Mini App build copied next to the server (ARCH §15) and the Playwright output.
-      'apps/server/public/**',
+      // wrangler's local state and bundle output, and the Playwright output.
+      'apps/server/.wrangler/**',
       'playwright-report/**',
       'test-results/**',
     ],
@@ -58,9 +58,17 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['**/http/**', '**/bot/**', '**/integrations/**', 'hono*', 'grammy*'],
+              group: [
+                '**/http/**',
+                '**/bot/**',
+                '**/integrations/**',
+                '**/realtime/**',
+                'hono*',
+                'grammy*',
+                'cloudflare:*',
+              ],
               message:
-                'domain/ receives ports as parameters; it must not import HTTP, bot or integration code (ARCH §2).',
+                'domain/ receives ports as parameters; it must not import HTTP, bot, hub or integration code (ARCH §2).',
             },
           ],
         },
@@ -77,6 +85,7 @@ export default tseslint.config(
       '**/*.config.{js,mjs,ts}',
       'apps/server/src/db/seed.ts',
       'apps/server/src/db/migrate.ts',
+      'apps/server/src/db/reset-test-database.ts',
     ],
     rules: { 'no-console': 'off' },
   },

@@ -4,18 +4,13 @@
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
-  "main": "dist/index.js",
-  "files": [
-    "dist",
-    "public"
-  ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-migrations.mjs",
+    "dev": "node ../../scripts/wrangler-dev.mjs",
+    "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && vitest run -c vitest.workers.config.ts",
     "test:watch": "vitest",
+    "test:hub": "vitest run -c vitest.workers.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts"
@@ -23,21 +18,21 @@
   "dependencies": {
     "@agrobot/shared": "workspace:*",
     "@grammyjs/auto-retry": "^2.0.2",
-    "@hono/node-server": "^2.1.1",
     "csv-parse": "^7.0.2",
     "drizzle-orm": "^0.45.2",
-    "googleapis": "^181.0.0",
     "grammy": "^1.46.0",
     "hono": "^4.13.8",
-    "pino": "^10.3.1",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.12",
+    "@cloudflare/workers-types": "^5.20260918.1",
     "@types/node": "^22.18.0",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.13",
     "typescript": "~5.9.3",
-    "vitest": "^5.0.1"
+    "vitest": "~4.1.11",
+    "wrangler": "^4.134.0"
   }
 }
