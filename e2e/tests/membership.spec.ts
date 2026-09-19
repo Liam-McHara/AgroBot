@@ -34,7 +34,8 @@ test('a stranger waits at the gate until an admin approves them', async ({ brows
   await expect(admin.getByText('No hi ha cap sol·licitud pendent.')).toBeVisible();
 
   // No click: the approval reached the applicant's socket as `me.changed` (ARCH §7).
-  await expect(applicant.getByTestId('board-placeholder')).toBeVisible();
+  await expect(applicant.getByRole('heading', { level: 1 })).toHaveText('Tauler');
+  await expect(applicant.getByRole('searchbox')).toBeVisible();
   const nav = applicant.getByRole('navigation');
   await expect(nav.getByRole('link')).toHaveCount(4);
   for (const name of ['Tauler', 'Ofertes', 'Reserves', 'Ajustos']) {
