@@ -2,6 +2,7 @@ import type { Database } from '../db/client.js';
 import type { CatalogSync } from '../db/schema/index.js';
 import type { CatalogService } from '../domain/catalog/service.js';
 import type { MembersService } from '../domain/members/service.js';
+import type { OffersService } from '../domain/offers/service.js';
 import type { HubPort } from '../domain/ports.js';
 import type { Env } from '../env.js';
 import type { TelegramSender } from '../integrations/telegram-api.js';
@@ -27,6 +28,7 @@ export interface JobDeps {
   sender: TelegramSender;
   catalog: CatalogService;
   members: MembersService;
+  offers: OffersService;
   /** The hub as the domain sees it; inside the hub it writes to the schedule directly. */
   hub: HubPort;
   now: () => Date;

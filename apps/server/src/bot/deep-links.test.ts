@@ -16,8 +16,21 @@ describe('deep links (ARCH §4)', () => {
     expect(parseQuickAction(data)).toEqual({ action: 'approve', entityId: id });
   });
 
+  it('knows the offer quick actions of N10 (PRD US-3.4)', () => {
+    const id = '22222222-2222-4222-8222-222222222222';
+    expect(parseQuickAction(quickActionData('still', id))).toEqual({
+      action: 'still',
+      entityId: id,
+    });
+    expect(parseQuickAction(quickActionData('withdraw', id))).toEqual({
+      action: 'withdraw',
+      entityId: id,
+    });
+  });
+
   it('ignores callback data it does not know', () => {
     expect(parseQuickAction('confirm:abc')).toBeNull();
+    expect(parseQuickAction('confirm:22222222-2222-4222-8222-222222222222')).toBeNull();
     expect(parseQuickAction('approve:not-a-uuid')).toBeNull();
   });
 });

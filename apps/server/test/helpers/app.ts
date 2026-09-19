@@ -6,6 +6,7 @@ import type { DatabaseHandle } from '../../src/db/client.js';
 import { createCatalogService } from '../../src/domain/catalog/service.js';
 import type { CatalogSource } from '../../src/domain/catalog/source.js';
 import { createMembersService } from '../../src/domain/members/service.js';
+import { createOffersService } from '../../src/domain/offers/service.js';
 import { createCatalogSource } from '../../src/integrations/catalog-source.js';
 import type { SendMessageInput, TelegramSender } from '../../src/integrations/telegram-api.js';
 import { jobs } from '../../src/jobs/index.js';
@@ -90,7 +91,16 @@ export function testDeps(
     source: options.source ?? createCatalogSource(env),
     hub,
   });
-  const deps: AppDeps = { db: database.db, env, logger: silentLogger, members, catalog, hub };
+  const offers = createOffersService({ db: database.db, hub });
+  const deps: AppDeps = {
+    db: database.db,
+    env,
+    logger: silentLogger,
+    members,
+    catalog,
+    offers,
+    hub,
+  };
   const sender: TelegramSender = options.sender ?? {
     async sendMessage(input) {
       hub.sent.push(input);

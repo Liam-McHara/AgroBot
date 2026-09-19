@@ -146,5 +146,27 @@
   "notification.N12.text": "No s’ha pogut sincronitzar el catàleg. S’han conservat els productes i preus anteriors. Revisa les incidències.",
   "bot.command.sync": "Sincronitza el catàleg (administradors)",
   "bot.command.status": "Estat del servei (administradors)",
-  "bot.status": "AgroBot {version} ({commit})\nMembres: {members, number}\nOfertes actives: {offers, number}\nReserves pendents: {reservations, number}\n{sync}"
+  "bot.status": "AgroBot {version} ({commit})\nMembres: {members, number}\nOfertes actives: {offers, number}\nReserves pendents: {reservations, number}\n{sync}",
+  "notification.N3.text": "🧺 {producer} ofereix {quantity, number, 1} {unit} de {product}.",
+  "notification.N3.republished": "🧺 {producer} torna a oferir {quantity, number, 1} {unit} de {product}.",
+  "notification.N3.open": "Obre l'oferta",
+  "notification.N10.text": "🌱 Encara tens {quantity, number, 1} {unit} de {product} disponibles? Fa dies que l'oferta no té novetats.",
+  "notification.N10.still": "✅ Sí, encara",
+  "notification.N10.withdraw": "🗑 Retira-la",
+  "notification.N10.done.still": "✅ Encara disponible",
+  "notification.N10.done.withdrawn": "🗑 Retirada",
+  "notification.N11.text": {
+    "one": "Has retirat l'oferta de {product}. Té 1 reserva oberta, que cal resoldre:",
+    "other": "Has retirat l'oferta de {product}. Té {count, number} reserves obertes, que cal resoldre una per una:"
+  },
+  "notification.N11.line": "• {name}: {quantity, number, 1} {unit}",
+  "notification.N11.open": "Obre les reserves",
+  "quick_action.still_available": "Perfecte: l'oferta de {product} continua disponible.",
+  "quick_action.withdrawn": "Oferta de {product} retirada.",
+  "quick_action.offer_not_active": "Aquesta oferta ja no està activa: {status}.",
+  "quick_action.not_producer": "Només qui ha publicat l'oferta pot fer això.",
+  "quick_action.offer_not_found": "No trobo aquesta oferta.",
+  "offer.status.active": "activa",
+  "offer.status.withdrawn": "retirada",
+  "offer.status.expired": "caducada"
 }

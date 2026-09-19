@@ -3,6 +3,7 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import { createDatabase, type Database, type DatabaseHandle } from './db/client.js';
 import { createCatalogService, type CatalogService } from './domain/catalog/service.js';
 import { createMembersService, type MembersService } from './domain/members/service.js';
+import { createOffersService, type OffersService } from './domain/offers/service.js';
 import type { HubPort } from './domain/ports.js';
 import type { Bindings, Env } from './env.js';
 import { createCatalogSource } from './integrations/catalog-source.js';
@@ -31,6 +32,7 @@ export function openDatabase(bindings: Pick<Bindings, 'HYPERDRIVE'>): DatabaseHa
 export interface Services {
   members: MembersService;
   catalog: CatalogService;
+  offers: OffersService;
 }
 
 export function createServices(input: { db: Database; env: Env; hub: HubPort }): Services {
@@ -45,6 +47,7 @@ export function createServices(input: { db: Database; env: Env; hub: HubPort }):
       source: createCatalogSource(input.env),
       hub: input.hub,
     }),
+    offers: createOffersService({ db: input.db, hub: input.hub }),
   };
 }
 

@@ -146,5 +146,27 @@
   "notification.N12.text": "No se ha podido sincronizar el catálogo. Se han conservado los productos y precios anteriores. Revisa las incidencias.",
   "bot.command.sync": "Sincronizar el catálogo (administradores)",
   "bot.command.status": "Estado del servicio (administradores)",
-  "bot.status": "AgroBot {version} ({commit})\nMiembros: {members, number}\nOfertas activas: {offers, number}\nReservas pendientes: {reservations, number}\n{sync}"
+  "bot.status": "AgroBot {version} ({commit})\nMiembros: {members, number}\nOfertas activas: {offers, number}\nReservas pendientes: {reservations, number}\n{sync}",
+  "notification.N3.text": "🧺 {producer} ofrece {quantity, number, 1} {unit} de {product}.",
+  "notification.N3.republished": "🧺 {producer} vuelve a ofrecer {quantity, number, 1} {unit} de {product}.",
+  "notification.N3.open": "Abrir la oferta",
+  "notification.N10.text": "🌱 ¿Todavía tienes {quantity, number, 1} {unit} de {product} disponibles? Hace días que la oferta no tiene novedades.",
+  "notification.N10.still": "✅ Sí, todavía",
+  "notification.N10.withdraw": "🗑 Retirarla",
+  "notification.N10.done.still": "✅ Todavía disponible",
+  "notification.N10.done.withdrawn": "🗑 Retirada",
+  "notification.N11.text": {
+    "one": "Has retirado la oferta de {product}. Tiene 1 reserva abierta, que hay que resolver:",
+    "other": "Has retirado la oferta de {product}. Tiene {count, number} reservas abiertas, que hay que resolver una por una:"
+  },
+  "notification.N11.line": "• {name}: {quantity, number, 1} {unit}",
+  "notification.N11.open": "Abrir las reservas",
+  "quick_action.still_available": "Perfecto: la oferta de {product} sigue disponible.",
+  "quick_action.withdrawn": "Oferta de {product} retirada.",
+  "quick_action.offer_not_active": "Esta oferta ya no está activa: {status}.",
+  "quick_action.not_producer": "Solo quien ha publicado la oferta puede hacer esto.",
+  "quick_action.offer_not_found": "No encuentro esta oferta.",
+  "offer.status.active": "activa",
+  "offer.status.withdrawn": "retirada",
+  "offer.status.expired": "caducada"
 }
