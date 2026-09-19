@@ -257,10 +257,14 @@ from the two-step path.
                  │
                  └──(nudge job)── stale=true/false flag, status unchanged
 ```
-Editing quantity/date/note keeps `active`. A quantity edit that makes `available` go from 0
-to > 0, or a date edit that brings an `expired` offer back, sets status `active` and
-re-triggers N3 ("re-published"). `expired`/`withdrawn` offers are editable by the producer to
-re-activate them (same rules).
+Editing quantity/date/note keeps `active`. After any producer edit the status is what the
+calendar says: `active`, or `expired` when the resulting date has already passed (the same
+rule the nightly job applies). An edit that puts the offer back on the board (`available`
+from 0 to > 0, a new date on an `expired` offer, any edit of a `withdrawn` one) re-triggers
+N3 ("re-published"); re-activation still respects one active offer per producer and product.
+Any edit or *still available* also clears `stale` and `nudged_at` and stamps
+`last_activity_at`. Withdraw applies to `active` and `expired` offers (the latter to tidy
+*My offers*); a withdrawn offer cannot be withdrawn again.
 
 ### Member
 `pending → approved → suspended ⇄ approved`, `pending → rejected`, `rejected → approved`
@@ -336,7 +340,7 @@ Production has exactly one caller: the hub's `alarm()` (ADR-0017). It keeps a
 | `reservations.remind` | `min(expires_at − reminder)` over pending, un-reminded reservations | N7 for pending reservations entering the reminder window. |
 | `reservations.expire` | `min(expires_at)` over pending reservations | Expire pending reservations past `expires_at`. |
 | `offers.expire` | next 00:05 Europe/Madrid | Expire offers whose `available_until` < today. |
-| `offers.nudge` | next 09:00 Europe/Madrid | Nudge / mark stale / re-nudge weekly, per PRD US-3.4. |
+| `offers.nudge` | next 09:00 Europe/Madrid | Per PRD US-3.4, over the dateless offers of approved producers that still have something to reserve: N10 after `offer_nudge_days` without activity, `stale` after `offer_stale_days_after_nudge` unanswered, N10 again weekly while stale. |
 | `catalog.sync` | next minute 7 of an hour; also on demand | §10. Admin *Sync now* and `/sync` call `hub.runJob('catalog.sync')` and await its report. |
 
 Rules:
@@ -503,6 +507,7 @@ of problems, by name; nothing is ever logged by value.
 | `GIT_COMMIT` | var | no | The deployed commit, for `/status` and `/health`; CI passes the sha, a hand deploy takes `git rev-parse`. |
 | `SENTRY_DSN` | secret | no | Enables error tracking. |
 | `DEV_AUTH_BYPASS_TELEGRAM_ID` | `.env` only | dev only | Refused when `NODE_ENV=production`. |
+| `TELEGRAM_API_ROOT` | `.env` only | dev/test only | Base URL of the Bot API, for a local fake (the e2e suite records the notifications the hub sent, §16). Refused when `NODE_ENV=production`. |
 
 Gone with the always-on process: `BOT_MODE` (webhook only), `PORT` (`wrangler dev --port 8080`
 keeps the Vite proxy unchanged) and `LOG_PRETTY`.
@@ -591,7 +596,7 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
 | Bot | Vitest + grammY test transformer | `/start` paths (applicant, pre-approved, admin bootstrap), quick actions incl. stale ones. |
 | Hub | Vitest under `@cloudflare/vitest-plugin` (inside workerd) | Alarm seeding and re-arming, `wake()`, full-batch re-run, retry backoff, `runJob` results and domain errors, ticket issue/redeem/expiry, socket tagging, publish fan-out and presence, rate counters. Next-due math (Madrid local time, DST) is a plain unit test. Jobs are a fake runner here; they have their own integration tests. |
 | Mini App | Vitest + Testing Library | Components with i18n and both languages; reserve form validation per unit. |
-| E2E | Playwright against `wrangler dev` | Two browser contexts (producer, requester): publish → appears on board → reserve → confirm → chat both ways → deliver. Admin approve flow. Runs in CI. |
+| E2E | Playwright against `wrangler dev` | Two browser contexts (producer, requester): publish → appears on board → reserve → confirm → chat both ways → deliver. Admin approve flow. A fake Bot API (`start-server.mjs`, `TELEGRAM_API_ROOT`) records what the hub dispatched, so a notification is asserted end to end. Runs in CI. |
 | i18n | build step | Script fails if `ca.json` and `es.json` keys differ or a key used in code is missing. |
 
 ## 17. Security checklist

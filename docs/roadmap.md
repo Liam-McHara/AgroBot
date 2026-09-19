@@ -242,25 +242,25 @@ directly, overridable with `PLACEMENT_REGION` (ARCH §3).
 §9 jobs, §11 (offers, board) · ADR-0009 (outbox), 0017 (hub).
 
 **Tasks**
-- [ ] `domain/offers`: publish (one active per producer+product, 409 with existing), edit with
+- [x] `domain/offers`: publish (one active per producer+product, 409 with existing), edit with
       `OFFER_QUANTITY_BELOW_HELD` (held = 0 until M4, computed via the real query anyway),
       withdraw, still-available, re-publish detection; unit step validation per unit; unit tests.
-- [ ] Board query (ARCH §5 derived rules) with grouping/search/category; integration tests for
+- [x] Board query (ARCH §5 derived rules) with grouping/search/category; integration tests for
       visibility rules (own offers hidden, suspended producer hidden, expired hidden, zero
       available hidden).
-- [ ] `board.changed` published through the hub after offer changes (the socket and the Mini
+- [x] `board.changed` published through the hub after offer changes (the socket and the Mini
       App realtime store exist since M2.5); the board store refetches on the event.
-- [ ] Notifications N3 (new/re-published) to all approved members except producer, respecting
+- [x] Notifications N3 (new/re-published) to all approved members except producer, respecting
       `notify_new_offer`; deep link `o_<id>`. The fan-out is drained by the hub in batches
       (ARCH §8), never sent from the request.
-- [ ] Jobs `offers.expire` (00:05 Europe/Madrid) and `offers.nudge` (09:00) registered in the
+- [x] Jobs `offers.expire` (00:05 Europe/Madrid) and `offers.nudge` (09:00) registered in the
       hub's schedule with their next-occurrence math (ADR-0017), quick actions `still:<id>` /
       `withdraw:<id>`; stale flag; N10; tests with fake clock.
-- [ ] N11 reminder list on withdraw (lists open reservations; empty until M4).
-- [ ] Complete proposal-reject cascade from M2 (withdraw offers on the rejected product),
+- [x] N11 reminder list on withdraw (lists open reservations; empty until M4).
+- [x] Complete proposal-reject cascade from M2 (withdraw offers on the rejected product),
       and merge references on pending-product rename (ADR-0015; refuse overlapping active
       offers by the same producer rather than combining them).
-- [ ] Mini App: Board (list, group toggle, search, category chips, offer detail sheet with a
+- [x] Mini App: Board (list, group toggle, search, category chips, offer detail sheet with a
       disabled reserve button until M4), My offers (list, publish form with picker, edit,
       withdraw, fully-reserved and expired states), offer deep link route.
 
@@ -269,6 +269,24 @@ directly, overridable with `PLACEMENT_REGION` (ARCH §3).
   arrives to requester (fake Telegram) → producer lowers quantity to 0 → offer leaves the board.
 - Offer with `available_until` yesterday is expired by the job; offer without date and 7 days
   old gets the nudge; unanswered for 3 more days becomes stale and sorts last.
+
+**Verified in M3:** the two-context Playwright flow runs against `wrangler dev` with a fake
+Bot API recording what the hub dispatched (publish → live board → N3 to the requester →
+quantity to 0 → gone → raised → re-published); the expiry, nudge, stale and weekly re-nudge
+sequence is an integration test with a fake clock (`test/offers-jobs.test.ts`). `pnpm lint`,
+`pnpm typecheck`, `pnpm test` and `pnpm build` pass; `pnpm e2e` passes membership, catalogue,
+offers and realtime.
+
+**Spec corrections made in this milestone:** a rejected proposal that offers reference is
+archived under a tombstone slug instead of deleted, since the foreign key forbids the delete
+and the records belong to members (ADR-0018; PRD §12, ARCH §6, §10); after a producer's edit
+the calendar decides the status, withdraw also applies to expired offers, and edits clear the
+nudge cycle (ARCH §6); the nudge considers dateless offers that still have something to
+reserve (PRD US-3.4, ARCH §9); a producer may lower an offer to 0 when nothing is held (PRD
+US-3.2, the definition of done above); the board's manual fallback is a refresh button rather
+than pull-to-refresh, which the Telegram web view owns (PRD US-3.3); `TELEGRAM_API_ROOT`, a
+dev/test-only variable refused in production, points the bot at a fake Bot API so the e2e
+suite can assert a notification end to end (ARCH §13, §16).
 
 ---
 
