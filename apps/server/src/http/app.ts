@@ -10,6 +10,7 @@ import { healthRoutes } from './routes/health.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { eventsRoutes } from './routes/events.js';
 import { meRoutes } from './routes/me.js';
+import { offerRoutes } from './routes/offers.js';
 import { adminMemberRoutes } from './routes/admin-members.js';
 import type { AppContext, AppDeps } from './context.js';
 
@@ -59,6 +60,7 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
   app.route('/api', meRoutes(deps));
   app.route('/api', adminMemberRoutes(deps));
   app.route('/api', catalogRoutes(deps));
+  app.route('/api', offerRoutes(deps));
   app.route('/api', eventsRoutes(deps));
 
   return app;
