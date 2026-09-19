@@ -198,7 +198,7 @@ wait for an admin before publishing surplus.
 
 ### US-3.2 Edit or withdraw an offer
 - Quantity can be raised freely and lowered down to the currently held quantity (pending +
-  confirmed). Lower than that is refused with a clear message.
+  confirmed), which is 0 when nothing is held. Lower than that is refused with a clear message.
 - Date and note editable any time. Removing the date is allowed.
 - **Withdraw** hides the offer immediately. Open reservations on it stay valid and must be
   resolved one by one; the producer is reminded of them at withdrawal time.
@@ -216,14 +216,15 @@ wait for an admin before publishing surplus.
   *price pending*), producer display name, *available until* if set, a *stale* marker if the
   offer is unconfirmed (US-3.4).
 - Group by product (default) or by producer; text search; filter by category.
-- Refreshes live while open (WebSocket, ADR-0017); pull-to-refresh as fallback.
+- Refreshes live while open (WebSocket, ADR-0017); a refresh button as fallback (a web view
+  inside Telegram already owns the vertical swipe).
 
 ### US-3.4 Offers do not go stale silently
 - Offers past their *available until* date become **expired** at the start of the next day
   (Europe/Madrid) and leave the board. Open reservations on them stay valid.
-- Offers **without** a date that have not been created, edited or confirmed for
-  `offer_nudge_days` (default 7) trigger a nudge to the producer: "Still available?" with quick
-  actions *Yes, still available* / *Withdraw*. *Yes* resets the counter.
+- Offers **without** a date, with available quantity > 0, that have not been created, edited
+  or confirmed for `offer_nudge_days` (default 7) trigger a nudge to the producer: "Still
+  available?" with quick actions *Yes, still available* / *Withdraw*. *Yes* resets the counter.
 - If there is no answer after `offer_stale_days_after_nudge` (default 3), the offer is marked
   **stale**: still reservable, but sorted last and badged, so requesters know to ask first.
   The nudge repeats weekly while stale.
@@ -366,7 +367,7 @@ Kept in the data model where cheap (price snapshots, timestamps) so they can be 
 | Accessibility / UX | Mobile-first, follows Telegram theme colours (light/dark), touch targets ≥ 44 px, works on the Telegram desktop client too. |
 | Observability | Structured JSON logs with request ids in Workers Logs (3 days of retention on the free plan), `/health` endpoint, error tracking hook (Sentry-compatible, optional). |
 | Quality | Strict TypeScript, lint, unit tests for domain rules, integration tests against real Postgres, e2e tests of the main flows against the real runtime (`wrangler dev`), CI required on every PR. |
-| Data | Nothing is hard-deleted except by explicit admin action on rejected products; everything else is status-based. Backups are Neon's point-in-time restore, a six-hour window on the free plan and no off-site copy (ADR-0016); the M6 restore drill proves it. |
+| Data | Nothing is hard-deleted except by explicit admin action on rejected products that nothing references yet (a rejected product with offers or reservations is archived instead, ADR-0018); everything else is status-based. Backups are Neon's point-in-time restore, a six-hour window on the free plan and no off-site copy (ADR-0016); the M6 restore drill proves it. |
 
 ## 13. Open questions
 

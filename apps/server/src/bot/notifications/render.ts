@@ -1,10 +1,11 @@
 import { InlineKeyboard } from 'grammy';
 import type { InlineKeyboardMarkup } from 'grammy/types';
-import { createTranslator, type Language, type Translator } from '@agrobot/shared';
+import { createTranslator, unitName, type Language, type Translator } from '@agrobot/shared';
 import type { Env } from '../../env.js';
 import type {
   ImplementedNotificationKind,
   NotificationPayloads,
+  OfferProductPayload,
 } from '../../domain/notifications/payloads.js';
 import { escapeHtml } from '../html.js';
 import { miniAppLink, quickActionData, type StartParam } from '../deep-links.js';
@@ -37,7 +38,58 @@ function nameWithUsername(name: string, username: string | null): string {
   return username ? `${escapeHtml(name)} (@${escapeHtml(username)})` : escapeHtml(name);
 }
 
+/** The product in the reader's language (PRD US-3.3), escaped, with its unit. */
+function productParams(payload: OfferProductPayload, language: Language) {
+  const name =
+    language === 'es' ? payload.productNameEs || payload.productName : payload.productName;
+  return { product: escapeHtml(name), unit: unitName(language, payload.unitCode) };
+}
+
 export const renderers: RendererRegistry = {
+  /** PRD N3: a new or re-published offer → every other member, with *Open offer*. */
+  N3: (payload, { t, link, language }) => ({
+    text: t(payload.republished ? 'notification.N3.republished' : 'notification.N3.text', {
+      ...productParams(payload, language),
+      producer: escapeHtml(payload.producerName),
+      quantity: payload.quantity,
+    }),
+    replyMarkup: new InlineKeyboard().url(t('notification.N3.open'), link(`o_${payload.offerId}`)),
+  }),
+
+  /** PRD N10: "still available?" → the producer, with *Yes* · *Withdraw* (US-3.4). */
+  N10: (payload, { t, link, language }) => ({
+    text: t('notification.N10.text', {
+      ...productParams(payload, language),
+      quantity: payload.quantity,
+    }),
+    replyMarkup: new InlineKeyboard()
+      .text(t('notification.N10.still'), quickActionData('still', payload.offerId))
+      .text(t('notification.N10.withdraw'), quickActionData('withdraw', payload.offerId))
+      .row()
+      .url(t('notification.N3.open'), link(`o_${payload.offerId}`)),
+  }),
+
+  /** PRD N11: withdrawn with open reservations → the producer, with the list to resolve. */
+  N11: (payload, { t, link, language }) => {
+    const { product, unit } = productParams(payload, language);
+    const lines = payload.reservations
+      .map((r) =>
+        t('notification.N11.line', {
+          name: escapeHtml(r.requesterName),
+          quantity: r.quantity,
+          unit,
+        }),
+      )
+      .join('\n');
+    return {
+      text: `${t('notification.N11.text', { product, count: payload.reservations.length })}\n${lines}`,
+      replyMarkup: new InlineKeyboard().url(
+        t('notification.N11.open'),
+        link(`o_${payload.offerId}`),
+      ),
+    };
+  },
+
   N4: (payload, { t, link }) => ({
     text: t('notification.N4.text', { name: escapeHtml(payload.name) }),
     replyMarkup: new InlineKeyboard().url(t('catalog.title'), link('a_catalog')),

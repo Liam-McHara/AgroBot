@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { InlineKeyboardMarkup, Update, UserFromGetMe } from 'grammy/types';
 import { eq } from 'drizzle-orm';
-import { members, notifications } from '../src/db/schema/index.js';
+import { members, notifications, offers, products } from '../src/db/schema/index.js';
 import { createBot } from '../src/bot/index.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 import { testDeps } from './helpers/app.js';
@@ -59,7 +59,7 @@ function botUnderTest() {
     return { ok: true, result: { message_id: sent.length } } as never;
   });
   const last = (method: string) => sent.filter((call) => call.method === method).at(-1);
-  return { bot, sent, last, hub: deps.hub };
+  return { bot, sent, last, hub: deps.hub, deps };
 }
 
 interface From {
@@ -317,6 +317,81 @@ suite('bot', () => {
       expect(last('answerCallbackQuery')?.payload['text']).toBe('Aquest botó ja no fa res.');
       await bot.handleUpdate(callbackUpdate(ADMIN, 'approve:00000000-0000-4000-8000-000000000000'));
       expect(last('answerCallbackQuery')?.payload['text']).toBe('No trobo aquesta sol·licitud.');
+    });
+  });
+
+  describe('quick actions still:<offerId> / withdraw:<offerId> (PRD US-3.4, N10)', () => {
+    async function nudgedOffer(from: From) {
+      const { bot, deps, last, sent } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(from));
+      if (from.id !== ADMIN_ID) {
+        await deps.members.approve(
+          (await memberByTelegramId(ADMIN_ID))!,
+          (await memberByTelegramId(from.id))!.id,
+        );
+      }
+      const producer = (await memberByTelegramId(from.id))!;
+      const [product] = await database!.db
+        .insert(products)
+        .values({ slug: 'ous', name: 'Ous', nameEs: 'Huevos', unitCode: 'dozen', priceCents: 300 })
+        .returning();
+      const { offer } = await deps.offers.publish(producer, {
+        productId: product!.id,
+        quantity: 4,
+      });
+      await database!.db
+        .update(offers)
+        .set({ stale: true, nudgedAt: new Date() })
+        .where(eq(offers.id, offer.id));
+      return { bot, deps, last, sent, producer, offer };
+    }
+
+    it('"still available" resets the nudge and marks the message', async () => {
+      const { bot, last, offer } = await nudgedOffer(ADMIN);
+      await bot.handleUpdate(callbackUpdate(ADMIN, `still:${offer.id}`, 'Encara tens 4 dotzena?'));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        "Perfecte: l'oferta de Ous continua disponible.",
+      );
+      expect(last('editMessageText')?.payload['text']).toBe(
+        'Encara tens 4 dotzena?\n\n✅ Encara disponible',
+      );
+      const [row] = await database!.db.select().from(offers).where(eq(offers.id, offer.id));
+      expect(row).toMatchObject({ stale: false, nudgedAt: null, status: 'active' });
+    });
+
+    it('"withdraw" hides the offer, in the producer language, and a second tap is explained', async () => {
+      const es: From = { id: 7006, first_name: 'Jordi', language_code: 'es' };
+      const { bot, last, offer } = await nudgedOffer(es);
+      await bot.handleUpdate(callbackUpdate(es, `withdraw:${offer.id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe('Oferta de Huevos retirada.');
+      expect(last('editMessageText')?.payload['text']).toContain('🗑 Retirada');
+      expect((await database!.db.select().from(offers))[0]?.status).toBe('withdrawn');
+
+      await bot.handleUpdate(callbackUpdate(es, `still:${offer.id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        'Esta oferta ya no está activa: retirada.',
+      );
+      expect(last('editMessageText')?.payload['text']).toContain('— retirada');
+    });
+
+    it('refuses a tap from someone who is not the producer, and answers a missing offer', async () => {
+      const { bot, last, offer } = await nudgedOffer(ADMIN);
+      await bot.handleUpdate(start(MARTA));
+      const deps = testDeps(database!, { ADMIN_TELEGRAM_IDS: String(ADMIN_ID) });
+      await deps.members.approve(
+        (await memberByTelegramId(ADMIN_ID))!,
+        (await memberByTelegramId(MARTA.id))!.id,
+      );
+      await bot.handleUpdate(callbackUpdate(MARTA, `withdraw:${offer.id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        "Només qui ha publicat l'oferta pot fer això.",
+      );
+      expect((await database!.db.select().from(offers))[0]?.status).toBe('active');
+      await bot.handleUpdate(
+        callbackUpdate(ADMIN, 'withdraw:00000000-0000-4000-8000-000000000000'),
+      );
+      expect(last('answerCallbackQuery')?.payload['text']).toBe('No trobo aquesta oferta.');
     });
   });
 });

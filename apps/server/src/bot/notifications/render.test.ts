@@ -90,3 +90,85 @@ describe('catalogue notifications (N4, N5, N12)', () => {
     });
   });
 });
+
+describe('offer notifications (N3, N10, N11)', () => {
+  const offerId = '22222222-2222-4222-8222-222222222222';
+  const product = {
+    productName: 'Tomàquet <cor de bou>',
+    productNameEs: 'Tomate',
+    unitCode: 'kg' as const,
+  };
+
+  it('N3 names the producer, the quantity with its unit and the product in the reader language', () => {
+    const ca = renderNotification(
+      env,
+      'N3',
+      { ...product, offerId, producerName: 'Marta & Pau', quantity: 12.5, republished: false },
+      'ca',
+    );
+    expect(ca.text).toBe('🧺 Marta &amp; Pau ofereix 12,5 kg de Tomàquet &lt;cor de bou&gt;.');
+    const [button] = ca.replyMarkup!.inline_keyboard.flat();
+    expect(button).toMatchObject({
+      text: "Obre l'oferta",
+      url: `https://t.me/AgroBotTest/app?startapp=o_${offerId}`,
+    });
+
+    const es = renderNotification(
+      env,
+      'N3',
+      { ...product, offerId, producerName: 'Marta', quantity: 3, republished: true },
+      'es',
+    );
+    expect(es.text).toBe('🧺 Marta vuelve a ofrecer 3 kg de Tomate.');
+  });
+
+  it('N10 asks "still available?" with Yes / Withdraw quick actions and the offer link', () => {
+    const rendered = renderNotification(
+      env,
+      'N10',
+      { ...product, productNameEs: null, unitCode: 'dozen', offerId, quantity: 4 },
+      'es',
+    );
+    expect(rendered.text).toContain('4 docena de Tomàquet &lt;cor de bou&gt;');
+    const rows = rendered.replyMarkup!.inline_keyboard;
+    expect(rows[0]!.map((b) => 'callback_data' in b && b.callback_data)).toEqual([
+      `still:${offerId}`,
+      `withdraw:${offerId}`,
+    ]);
+    expect(rows[0]!.map((b) => b.text)).toEqual(['✅ Sí, todavía', '🗑 Retirarla']);
+    expect(rows[1]![0]).toMatchObject({
+      url: `https://t.me/AgroBotTest/app?startapp=o_${offerId}`,
+    });
+  });
+
+  it('N11 lists the open reservations to resolve, with a plural that follows the count', () => {
+    const one = renderNotification(
+      env,
+      'N11',
+      { ...product, offerId, reservations: [{ requesterName: 'Jordi <j>', quantity: 2 }] },
+      'ca',
+    );
+    expect(one.text).toBe(
+      "Has retirat l'oferta de Tomàquet &lt;cor de bou&gt;. Té 1 reserva oberta, que cal resoldre:\n• Jordi &lt;j&gt;: 2 kg",
+    );
+    const two = renderNotification(
+      env,
+      'N11',
+      {
+        ...product,
+        offerId,
+        reservations: [
+          { requesterName: 'Jordi', quantity: 2 },
+          { requesterName: 'Pere', quantity: 3.5 },
+        ],
+      },
+      'es',
+    );
+    expect(two.text).toContain('Tiene 2 reservas abiertas');
+    expect(two.text).toContain('• Pere: 3,5 kg');
+    expect(two.replyMarkup!.inline_keyboard[0]![0]).toMatchObject({
+      text: 'Abrir las reservas',
+      url: `https://t.me/AgroBotTest/app?startapp=o_${offerId}`,
+    });
+  });
+});

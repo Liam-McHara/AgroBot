@@ -10,7 +10,7 @@ import type { User, UserFromGetMe } from 'grammy/types';
 import type { Member } from '../db/schema/index.js';
 import type { TelegramIdentity } from '../domain/members/rules.js';
 import type { IdentifyResult } from '../domain/members/service.js';
-import type { Env } from '../env.js';
+import { telegramClientOptions, type Env } from '../env.js';
 import { APP_VERSION, gitCommit } from '../version.js';
 import { isAppError } from '../errors.js';
 import type { AppDeps } from '../http/context.js';
@@ -66,7 +66,7 @@ function identityOf(from: User): TelegramIdentity {
 export function createBot(deps: AppDeps): Bot {
   const bot = new Bot(deps.env.BOT_TOKEN, {
     botInfo: botInfoFor(deps.env),
-    client: { timeoutSeconds: TELEGRAM_TIMEOUT_SECONDS },
+    client: telegramClientOptions(deps.env, TELEGRAM_TIMEOUT_SECONDS),
   });
 
   // Telegram answers a flood with 429 + `retry_after`; the transformer waits it out for us.
@@ -172,9 +172,10 @@ export function createBot(deps: AppDeps): Bot {
   }
 
   /**
-   * PRD §9 quick actions: `approve:<memberId>` / `reject:<memberId>` from N1. Idempotent and
-   * authorized in the domain; a stale button explains itself and the message loses its
-   * buttons so it visibly stops being one (ARCH §8 step 4).
+   * PRD §9 quick actions: `approve:<memberId>` / `reject:<memberId>` from N1, `still:<offerId>`
+   * / `withdraw:<offerId>` from N10. Idempotent and authorized in the domain; a stale button
+   * explains itself and the message loses its buttons so it visibly stops being one (ARCH §8
+   * step 4).
    */
   bot.on('callback_query:data', async (ctx) => {
     const { member: actor } = await deps.members.identify(identityOf(ctx.from));
@@ -182,6 +183,10 @@ export function createBot(deps: AppDeps): Bot {
     const parsed = parseQuickAction(ctx.callbackQuery.data);
     if (!parsed) {
       await ctx.answerCallbackQuery({ text: t('quick_action.unknown') });
+      return;
+    }
+    if (parsed.action === 'still' || parsed.action === 'withdraw') {
+      await offerQuickAction(ctx, actor, parsed.action, parsed.entityId);
       return;
     }
 
@@ -230,6 +235,62 @@ export function createBot(deps: AppDeps): Bot {
       throw error;
     }
   });
+
+  /**
+   * PRD US-3.4 / N10: *Yes, still available* resets the nudge counter; *Withdraw* hides the
+   * offer. Same domain calls as the API, so the producer check and the status guard are shared.
+   */
+  async function offerQuickAction(
+    ctx: Context,
+    actor: Member,
+    action: 'still' | 'withdraw',
+    offerId: string,
+  ): Promise<void> {
+    const t = createTranslator(actor.language);
+    try {
+      const record =
+        action === 'still'
+          ? await deps.offers.stillAvailable(actor, offerId)
+          : await deps.offers.withdraw(actor, offerId);
+      const product =
+        actor.language === 'es'
+          ? record.product.nameEs || record.product.name
+          : record.product.name;
+      await ctx.answerCallbackQuery({
+        text: t(action === 'still' ? 'quick_action.still_available' : 'quick_action.withdrawn', {
+          product,
+        }),
+      });
+      await appendOutcome(
+        ctx,
+        t(action === 'still' ? 'notification.N10.done.still' : 'notification.N10.done.withdrawn'),
+      );
+    } catch (error) {
+      if (isAppError(error, 'INVALID_TRANSITION')) {
+        const current = await deps.offers.get(actor, offerId).catch(() => null);
+        const status = current
+          ? t(`offer.status.${current.offer.status}` as MessageKey)
+          : t('quick_action.not_found');
+        await ctx.answerCallbackQuery({ text: t('quick_action.offer_not_active', { status }) });
+        await appendOutcome(ctx, `— ${escapeHtml(status)}`);
+        return;
+      }
+      if (isAppError(error, 'FORBIDDEN')) {
+        await ctx.answerCallbackQuery({ text: t('quick_action.not_producer'), show_alert: true });
+        return;
+      }
+      if (isAppError(error, 'NOT_APPROVED') || isAppError(error, 'SUSPENDED')) {
+        await ctx.answerCallbackQuery({ text: error.body(actor.language).error.message });
+        return;
+      }
+      if (isAppError(error, 'NOT_FOUND')) {
+        await ctx.answerCallbackQuery({ text: t('quick_action.offer_not_found') });
+        await stripButtons(ctx);
+        return;
+      }
+      throw error;
+    }
+  }
 
   /** Re-send the original text (escaped: we switch to HTML) with the outcome under it. */
   async function appendOutcome(ctx: Context, outcome: string): Promise<void> {

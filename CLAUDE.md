@@ -103,6 +103,14 @@ hour from the hub, and once when the hub first exists after a deploy; admins can
 Focused catalogue integration checks: `pnpm --filter @agrobot/server exec vitest run test/catalog.test.ts`.
 They use fixture sources; no Google credentials or real Telegram bot are needed.
 
+Offers and the board: `domain/offers` owns publish, edit, withdraw, still-available, the board
+query and the two daily jobs (`offers.expire` at 00:05, `offers.nudge` at 09:00, Europe/Madrid).
+Focused checks: `pnpm --filter @agrobot/server exec vitest run test/offers.test.ts
+test/offers-api.test.ts test/offers-jobs.test.ts` (the last one drives the jobs with a fake
+clock). The e2e suite runs a fake Telegram Bot API (`e2e/start-server.mjs`, `TELEGRAM_API_ROOT`)
+and reads what the hub dispatched at `GET /messages`, which is how a notification is asserted
+end to end; the variable is refused in production.
+
 ## Git
 
 - Branch per milestone or task (`m0-foundation`, `m3-board-search`).
@@ -137,5 +145,6 @@ Refs: US-2.3, ADR-0004
 member · applicant · admin · product · unit · offer · available · held · reservation
 (pending, confirmed, delivered, rejected, cancelled, expired) · requester · producer ·
 thread · message · notification · quick action · catalogue sync · pending product · stale offer ·
+nudge (the "still available?" N10) · re-publish (an edit that puts an offer back on the board) ·
 hub (the Durable Object) · job · wake (make the dispatcher due now) · ticket (socket handshake).
 Definitions in `docs/prd.md` §3.

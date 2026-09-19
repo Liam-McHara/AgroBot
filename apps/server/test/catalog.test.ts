@@ -231,14 +231,76 @@ suite('catalogue: real Postgres (US-2.1, US-2.2)', () => {
     });
     await expect(service().reject(admin, product.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
-  it('keeps referenced proposals safe until M3 supplies the rejection/merge cascade', async () => {
-    const pending = await service().propose(farmer, { name: 'Pending product', unitCode: 'kg' });
+  it('rejecting a proposal with offers withdraws them, archives it under a free name and notifies (ADR-0018)', async () => {
+    const deps = testDeps(database!);
+    const pending = await deps.catalog.propose(farmer, { name: 'Pending product', unitCode: 'kg' });
+    const [offer] = await database!.db
+      .insert(offers)
+      .values({ producerId: farmer.id, productId: pending.id, quantity: '2' })
+      .returning();
+    const [old] = await database!.db
+      .insert(offers)
+      .values({ producerId: other.id, productId: pending.id, quantity: '1', status: 'withdrawn' })
+      .returning();
+    deps.hub.published.length = 0;
+    await deps.catalog.reject(admin, pending.id);
+
+    const [archived] = await rows();
+    expect(archived).toMatchObject({ id: pending.id, status: 'archived', name: 'Pending product' });
+    expect(archived!.slug).toMatch(/^pending product \[rejected [0-9a-f]{8}\]$/);
+    expect(
+      (await database!.db.select().from(offers).where(eq(offers.id, offer!.id)))[0]?.status,
+    ).toBe('withdrawn');
+    expect(
+      (await database!.db.select().from(offers).where(eq(offers.id, old!.id)))[0]?.status,
+    ).toBe('withdrawn');
+    // The proposer is also the producer: one N5, not two; boards refetch (ARCH §7).
+    expect((await notices('N5')).map((n) => n.memberId)).toEqual([farmer.id]);
+    expect(deps.hub.published).toMatchObject([{ event: { type: 'board.changed' } }]);
+    // The name is free again, and a sync with that name creates a new product.
+    const again = await deps.catalog.propose(farmer, { name: 'Pending product', unitCode: 'kg' });
+    expect(again.id).not.toBe(pending.id);
+    cells = [header, ['Pending product', 'kg', 1]];
+    expect(await sync()).toMatchObject({ resolvedPending: 1 });
+    expect((await rows()).filter((p) => p.status === 'archived')).toHaveLength(1);
+  });
+  it('rejecting an unreferenced proposal still deletes it', async () => {
+    const pending = await service().propose(farmer, { name: 'Typo', unitCode: 'kg' });
+    await service().reject(admin, pending.id);
+    expect(await rows()).toHaveLength(0);
+  });
+  it('merging a proposal moves its offers to the sheet product and refuses a producer clash (ADR-0015)', async () => {
+    await sync();
+    const tomato = (await rows()).find((p) => p.slug === 'tomaquet')!;
+    const proposal = await service().propose(farmer, { name: 'Tomaket', unitCode: 'kg' });
+    const [moving] = await database!.db
+      .insert(offers)
+      .values({ producerId: farmer.id, productId: proposal.id, quantity: '2' })
+      .returning();
+    const [history] = await database!.db
+      .insert(offers)
+      .values({ producerId: other.id, productId: proposal.id, quantity: '5', status: 'expired' })
+      .returning();
+    // Another producer's active offer on the target is no clash.
     await database!.db
       .insert(offers)
-      .values({ producerId: farmer.id, productId: pending.id, quantity: '2' });
-    await expect(service().reject(admin, pending.id)).rejects.toMatchObject({ code: 'CONFLICT' });
-    expect(await notices('N5')).toHaveLength(0);
-    expect((await rows())[0]?.status).toBe('pending');
+      .values({ producerId: other.id, productId: tomato.id, quantity: '9' });
+    expect(await service().rename(admin, proposal.id, 'Tomàquet')).toMatchObject({ id: tomato.id });
+    const moved = await database!.db.select().from(offers).where(eq(offers.productId, tomato.id));
+    expect(moved).toHaveLength(3);
+    expect(moved.map((o) => o.id)).toEqual(expect.arrayContaining([moving!.id, history!.id]));
+    expect((await rows()).find((p) => p.id === proposal.id)?.status).toBe('archived');
+
+    // The farmer now has an active Tomàquet offer; a second proposal of theirs cannot merge.
+    const second = await service().propose(farmer, { name: 'Tomaquets', unitCode: 'kg' });
+    await database!.db
+      .insert(offers)
+      .values({ producerId: farmer.id, productId: second.id, quantity: '1' });
+    await expect(service().rename(admin, second.id, 'Tomàquet')).rejects.toMatchObject({
+      code: 'CONFLICT',
+      details: { reason: 'offer_conflict' },
+    });
+    expect((await rows()).find((p) => p.id === second.id)?.status).toBe('pending');
   });
   it('warns when changing units on active offers', async () => {
     await sync();

@@ -9,6 +9,7 @@
   import { initTelegram, routeForStartParam, syncBackButton } from './lib/telegram.js';
   import Board from './routes/Board.svelte';
   import Gate from './routes/Gate.svelte';
+  import OfferDetail from './routes/OfferDetail.svelte';
   import Offers from './routes/Offers.svelte';
   import Reservations from './routes/Reservations.svelte';
   import Settings from './routes/Settings.svelte';
@@ -23,6 +24,7 @@
   const routes = $derived({
     '/': Board,
     '/offers': Offers,
+    '/offers/:id': OfferDetail,
     '/reservations': Reservations,
     '/settings': Settings,
     ...(meStore.isAdmin ? { '/admin/members': AdminMembers, '/admin/catalog': AdminCatalog } : {}),

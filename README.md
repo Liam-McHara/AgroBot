@@ -9,15 +9,17 @@ Mini App for the screens.
 ## Status
 
 **2.0 is under construction.** The specification lives in [`docs/`](docs/README.md) and is the
-source of truth. Milestones **M0 Foundation**, **M1 Identity and membership**, **M2 Catalogue**
-and **M2.5 Free hosting** are done in code: the workspace runs on Cloudflare's runtime
-(`wrangler dev` locally), strangers apply with `/start`, admins approve from Telegram or the
-Mini App, products and prices sync from the sheet, members can propose missing products, admins
-can review sync health, and the Mini App gets live updates over a WebSocket held by one Durable
-Object ([ADR-0016](docs/adr/0016-hosting-on-cloudflare-workers-and-neon.md),
-[ADR-0017](docs/adr/0017-durable-object-for-jobs-and-realtime.md)). Every screen speaks Catalan
-and Spanish. What M2.5 still needs is a **first deploy to the staging Worker**, which takes a
-Cloudflare and a Neon account ([first-time setup](#first-time-setup) below); then M3 in
+source of truth. Milestones **M0 Foundation**, **M1 Identity and membership**, **M2 Catalogue**,
+**M2.5 Free hosting** and **M3 Offers and board** are done in code: the workspace runs on
+Cloudflare's runtime (`wrangler dev` locally), strangers apply with `/start`, admins approve from
+Telegram or the Mini App, products and prices sync from the sheet, members propose missing
+products and publish, edit and withdraw offers on them, everyone sees the board update live over
+a WebSocket held by one Durable Object
+([ADR-0016](docs/adr/0016-hosting-on-cloudflare-workers-and-neon.md),
+[ADR-0017](docs/adr/0017-durable-object-for-jobs-and-realtime.md)), the group is told of new
+offers, and the hub's daily jobs expire dated offers and ask about idle ones. Every screen speaks
+Catalan and Spanish. What M2.5 still needs is a **first deploy to the staging Worker**, which
+takes a Cloudflare and a Neon account ([first-time setup](#first-time-setup) below); then M4 in
 [docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under [`legacy/`](legacy/README.md).
 
 | Document | Purpose |
@@ -100,8 +102,10 @@ Sync runs at minute 7 of every hour from the hub, and once when the hub first ex
 deploy. Admins can run `/sync` in Telegram or **Admin → Catalogue → Sync now**; both run the job
 inside the hub and wait for its report. `/status` reports membership, offers, reservations, last
 sync and app version. The admin screen shows row errors and unit-change warnings; failed reads
-or zero valid rows preserve the existing catalogue and queue N12. Members can search and
-propose products under **My offers**; offer publication arrives in M3.
+or zero valid rows preserve the existing catalogue and queue N12. Members search and
+propose products from the picker under **My offers** when they publish an offer (M3); the
+board shows everyone else's offers live, and the hub's daily jobs expire dated offers and ask
+about idle ones.
 
 To check the full M2 scenario without a Google account:
 

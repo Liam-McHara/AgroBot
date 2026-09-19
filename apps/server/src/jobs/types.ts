@@ -2,6 +2,7 @@ import type { Database } from '../db/client.js';
 import type { CatalogSync } from '../db/schema/index.js';
 import type { CatalogService } from '../domain/catalog/service.js';
 import type { MembersService } from '../domain/members/service.js';
+import type { OffersService } from '../domain/offers/service.js';
 import type { HubPort } from '../domain/ports.js';
 import type { Env } from '../env.js';
 import type { TelegramSender } from '../integrations/telegram-api.js';
@@ -27,6 +28,7 @@ export interface JobDeps {
   sender: TelegramSender;
   catalog: CatalogService;
   members: MembersService;
+  offers: OffersService;
   /** The hub as the domain sees it; inside the hub it writes to the schedule directly. */
   hub: HubPort;
   now: () => Date;
@@ -36,11 +38,15 @@ export interface JobDeps {
 export interface JobParams {
   'notifications.dispatch': undefined;
   'catalog.sync': { trigger: 'manual' | 'command'; actorId: string } | undefined;
+  'offers.expire': undefined;
+  'offers.nudge': undefined;
 }
 
 export interface JobResults {
   'notifications.dispatch': DispatchReport;
   'catalog.sync': CatalogSync;
+  'offers.expire': { expired: number };
+  'offers.nudge': { nudged: number; stale: number; renudged: number };
 }
 
 export type JobName = keyof JobParams & keyof JobResults;
