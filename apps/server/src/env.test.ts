@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { EnvError, allowedSocketOrigins, devAuthBypassId, parseEnv } from './env.js';
+import {
+  EnvError,
+  allowedSocketOrigins,
+  devAuthBypassId,
+  parseEnv,
+  telegramClientOptions,
+} from './env.js';
 
 const MINIMAL = {
   BOT_TOKEN: '123:abc',
@@ -128,5 +134,18 @@ describe('allowedSocketOrigins (ARCH §7, §17)', () => {
     expect(origins[0]).toBe('http://localhost:8080');
     expect(origins).toContain('http://localhost:5173');
     expect(new Set(origins).size).toBe(origins.length);
+  });
+
+  it('points grammY at a fake Bot API outside production only (ARCH §13, §16)', () => {
+    const dev = parseEnv({ ...MINIMAL, TELEGRAM_API_ROOT: 'http://127.0.0.1:8089' });
+    expect(telegramClientOptions(dev, 20)).toEqual({
+      timeoutSeconds: 20,
+      apiRoot: 'http://127.0.0.1:8089',
+    });
+    expect(telegramClientOptions(parseEnv(MINIMAL), 20)).toEqual({ timeoutSeconds: 20 });
+    expect(
+      problemsOf({ ...MINIMAL, NODE_ENV: 'production', TELEGRAM_API_ROOT: 'http://127.0.0.1:1' }),
+    ).toEqual(['TELEGRAM_API_ROOT: must not be set in production (ARCH §13)']);
+    expect(problemsOf({ ...MINIMAL, TELEGRAM_API_ROOT: 'not a url' })).toHaveLength(1);
   });
 });

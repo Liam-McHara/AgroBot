@@ -64,6 +64,12 @@ const baseSchema = z.object({
 
   /** Dev only, ignored in production (ARCH §4, ADR-0010). */
   DEV_AUTH_BYPASS_TELEGRAM_ID: z.string().regex(/^\d+$/).optional(),
+  /**
+   * Dev and test only (ARCH §13, §16): where the Bot API lives. The e2e suite points it at a
+   * fake Telegram that records what the outbox sent, so a notification can be asserted end
+   * to end. Refused in production, where only Telegram may hold the token.
+   */
+  TELEGRAM_API_ROOT: z.url().optional(),
 });
 
 const envSchema = baseSchema.superRefine((env, ctx) => {
@@ -95,6 +101,13 @@ const envSchema = baseSchema.superRefine((env, ctx) => {
       code: 'custom',
       path: ['DEV_AUTH_BYPASS_TELEGRAM_ID'],
       message: 'must not be set in production (ARCH §4)',
+    });
+  }
+  if (env.NODE_ENV === 'production' && env.TELEGRAM_API_ROOT) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['TELEGRAM_API_ROOT'],
+      message: 'must not be set in production (ARCH §13)',
     });
   }
 });
@@ -148,4 +161,13 @@ export function allowedSocketOrigins(e: Pick<Env, 'PUBLIC_URL' | 'NODE_ENV'>): s
     }
   }
   return [...origins];
+}
+
+/** grammY client options: the timeout, and the Bot API root when a test double stands in. */
+export function telegramClientOptions(
+  e: Pick<Env, 'TELEGRAM_API_ROOT' | 'NODE_ENV'>,
+  timeoutSeconds: number,
+): { timeoutSeconds: number; apiRoot?: string } {
+  const apiRoot = isProduction(e) ? undefined : e.TELEGRAM_API_ROOT;
+  return { timeoutSeconds, ...(apiRoot ? { apiRoot } : {}) };
 }

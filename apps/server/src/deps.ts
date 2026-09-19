@@ -5,7 +5,7 @@ import { createCatalogService, type CatalogService } from './domain/catalog/serv
 import { createMembersService, type MembersService } from './domain/members/service.js';
 import { createOffersService, type OffersService } from './domain/offers/service.js';
 import type { HubPort } from './domain/ports.js';
-import type { Bindings, Env } from './env.js';
+import { telegramClientOptions, type Bindings, type Env } from './env.js';
 import { createCatalogSource } from './integrations/catalog-source.js';
 import { grammySender, type TelegramSender } from './integrations/telegram-api.js';
 import type { JobDeps } from './jobs/types.js';
@@ -52,8 +52,10 @@ export function createServices(input: { db: Database; env: Env; hub: HubPort }):
 }
 
 /** The grammY API client the hub sends notifications through, with the 429 auto-retry. */
-export function createTelegramSender(env: Pick<Env, 'BOT_TOKEN'>): TelegramSender {
-  const api = new Api(env.BOT_TOKEN, { timeoutSeconds: TELEGRAM_TIMEOUT_SECONDS });
+export function createTelegramSender(
+  env: Pick<Env, 'BOT_TOKEN' | 'TELEGRAM_API_ROOT' | 'NODE_ENV'>,
+): TelegramSender {
+  const api = new Api(env.BOT_TOKEN, telegramClientOptions(env, TELEGRAM_TIMEOUT_SECONDS));
   api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60 }));
   return grammySender(api);
 }

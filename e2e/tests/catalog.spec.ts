@@ -23,6 +23,8 @@ test('catalogue imports, resolves a member proposal, reports row errors and pres
   const admin = await openAs(browser, IDS.admin, '/#/admin/catalog');
   try {
     await expect(admin.page.getByRole('heading', { level: 1 })).toHaveText('Catàleg');
+    // The picker opens from *Publish an offer* (M3); proposing is its empty-search action.
+    await farmer.page.getByTestId('publish').click();
     await farmer.page.getByRole('searchbox').fill('tomàquet cor de bou');
     await farmer.page.getByRole('button', { name: 'Proposa «tomàquet cor de bou»' }).click();
     await expect(farmer.page.getByText('Preu pendent')).toBeVisible();
@@ -43,6 +45,8 @@ test('catalogue imports, resolves a member proposal, reports row errors and pres
     await expect(proposal).toContainText('Actiu');
     await expect(proposal).toContainText(/2,40\s*€/);
     await farmer.page.reload();
+    await farmer.page.getByTestId('publish').click();
+    await farmer.page.getByRole('searchbox').fill('cor de bou');
     await expect(farmer.page.getByRole('button', { name: /Tomàquet cor de bou/ })).toContainText(
       /2,40\s*€/,
     );

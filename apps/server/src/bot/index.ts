@@ -10,7 +10,7 @@ import type { User, UserFromGetMe } from 'grammy/types';
 import type { Member } from '../db/schema/index.js';
 import type { TelegramIdentity } from '../domain/members/rules.js';
 import type { IdentifyResult } from '../domain/members/service.js';
-import type { Env } from '../env.js';
+import { telegramClientOptions, type Env } from '../env.js';
 import { APP_VERSION, gitCommit } from '../version.js';
 import { isAppError } from '../errors.js';
 import type { AppDeps } from '../http/context.js';
@@ -66,7 +66,7 @@ function identityOf(from: User): TelegramIdentity {
 export function createBot(deps: AppDeps): Bot {
   const bot = new Bot(deps.env.BOT_TOKEN, {
     botInfo: botInfoFor(deps.env),
-    client: { timeoutSeconds: TELEGRAM_TIMEOUT_SECONDS },
+    client: telegramClientOptions(deps.env, TELEGRAM_TIMEOUT_SECONDS),
   });
 
   // Telegram answers a flood with 429 + `retry_after`; the transformer waits it out for us.
