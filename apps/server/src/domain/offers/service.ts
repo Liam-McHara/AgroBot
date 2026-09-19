@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import {
   editOfferSchema,
   isDateBefore,
@@ -475,5 +475,98 @@ export function createOffersService(deps: OffersDeps) {
     });
   }
 
-  return { publish, edit, withdraw, stillAvailable, mine, get, board };
+  /**
+   * ARCH §9 `offers.expire` (PRD US-3.4): offers past their *available until* date become
+   * `expired` at the start of the next day on the farm. Idempotent: a second run the same
+   * night finds nothing active with a past date.
+   */
+  async function expire(at: Date): Promise<{ expired: number }> {
+    const { expired, audience } = await deps.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(offers)
+        .set({ status: 'expired', updatedAt: at })
+        .where(
+          and(
+            eq(offers.status, 'active'),
+            isNotNull(offers.availableUntil),
+            lt(offers.availableUntil, today(at)),
+          ),
+        )
+        .returning({ id: offers.id });
+      return { expired: rows.length, audience: rows.length ? await approvedMemberIds(tx) : [] };
+    });
+    afterCommit(0, audience);
+    return { expired };
+  }
+
+  /**
+   * ARCH §9 `offers.nudge` (PRD US-3.4), once a day at 09:00 on the farm. Among the dateless
+   * offers that still have something to reserve, from approved producers:
+   * - not nudged and idle for `offer_nudge_days` → N10 "still available?", `nudged_at` set;
+   * - nudged, unanswered for `offer_stale_days_after_nudge` → marked stale (sorted last, badged);
+   * - stale, last nudged a week ago → N10 again, weekly, until the producer answers.
+   * An edit or *still available* clears `nudged_at` and `stale` (US-3.2, US-3.4), which is what
+   * makes each step above run once per cycle however often the alarm fires.
+   */
+  async function nudge(at: Date): Promise<{ nudged: number; stale: number; renudged: number }> {
+    const { report, notified, audience } = await deps.db.transaction(async (tx) => {
+      const settings = await loadSettings(tx);
+      const daysAgo = (days: number) => new Date(at.getTime() - days * 86_400_000);
+      const idleSince = daysAgo(settings.offer_nudge_days);
+      const unansweredSince = daysAgo(settings.offer_stale_days_after_nudge);
+      const weekAgo = daysAgo(7);
+
+      const rows = await selectRecords(tx)
+        .where(
+          and(
+            eq(offers.status, 'active'),
+            isNull(offers.availableUntil),
+            eq(members.status, 'approved'),
+            sql`${offers.quantity} > ${heldSql}`,
+          ),
+        )
+        .for('update', { of: offers });
+      const candidates = rows.map(toRecord);
+
+      const toNudge = candidates.filter(
+        (r) => r.offer.nudgedAt === null && r.offer.lastActivityAt <= idleSince,
+      );
+      const toMarkStale = candidates.filter(
+        (r) => r.offer.nudgedAt !== null && !r.offer.stale && r.offer.nudgedAt <= unansweredSince,
+      );
+      const toRenudge = candidates.filter(
+        (r) => r.offer.stale && r.offer.nudgedAt !== null && r.offer.nudgedAt <= weekAgo,
+      );
+
+      let notified = 0;
+      for (const record of [...toNudge, ...toRenudge]) {
+        await tx.update(offers).set({ nudgedAt: at }).where(eq(offers.id, record.offer.id));
+        const row = await enqueueNotification(tx, {
+          memberId: record.producer.id,
+          kind: 'N10',
+          payload: {
+            offerId: record.offer.id,
+            productName: record.product.name,
+            productNameEs: record.product.nameEs,
+            unitCode: record.product.unitCode,
+            quantity: record.available,
+          },
+        });
+        if (row) notified += 1;
+      }
+      for (const record of toMarkStale) {
+        await tx.update(offers).set({ stale: true }).where(eq(offers.id, record.offer.id));
+      }
+      return {
+        report: { nudged: toNudge.length, stale: toMarkStale.length, renudged: toRenudge.length },
+        notified,
+        // Only a new stale badge changes what a board shows.
+        audience: toMarkStale.length ? await approvedMemberIds(tx) : [],
+      };
+    });
+    afterCommit(notified, audience);
+    return report;
+  }
+
+  return { publish, edit, withdraw, stillAvailable, mine, get, board, expire, nudge };
 }

@@ -38,11 +38,15 @@ export interface JobDeps {
 export interface JobParams {
   'notifications.dispatch': undefined;
   'catalog.sync': { trigger: 'manual' | 'command'; actorId: string } | undefined;
+  'offers.expire': undefined;
+  'offers.nudge': undefined;
 }
 
 export interface JobResults {
   'notifications.dispatch': DispatchReport;
   'catalog.sync': CatalogSync;
+  'offers.expire': { expired: number };
+  'offers.nudge': { nudged: number; stale: number; renudged: number };
 }
 
 export type JobName = keyof JobParams & keyof JobResults;

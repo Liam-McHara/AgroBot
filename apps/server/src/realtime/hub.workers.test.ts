@@ -98,6 +98,8 @@ describe('schedule and alarm (ARCH §9)', () => {
     expect(schedule.map((row) => row.job).sort()).toEqual([
       'catalog.sync',
       'notifications.dispatch',
+      'offers.expire',
+      'offers.nudge',
     ]);
     expect(schedule.every((row) => row.dueAt === T0 && row.failures === 0)).toBe(true);
     expect(await alarmOf(stub)).toBe(T0);
@@ -119,18 +121,26 @@ describe('schedule and alarm (ARCH §9)', () => {
     await stub.ensureArmed();
 
     expect(await runDurableObjectAlarm(stub)).toBe(true);
-    expect(runs.map((run) => run.name).sort()).toEqual(['catalog.sync', 'notifications.dispatch']);
+    expect(runs.map((run) => run.name).sort()).toEqual([
+      'catalog.sync',
+      'notifications.dispatch',
+      'offers.expire',
+      'offers.nudge',
+    ]);
     expect(runs.every((run) => run.params === undefined && run.at === T0)).toBe(true);
     expect(await dueMap(stub)).toEqual({
       'notifications.dispatch': T0 + 5 * MINUTE,
       'catalog.sync': T0 + 67 * MINUTE,
+      // Unscripted in this test: the fake runner answers "nothing due".
+      'offers.expire': null,
+      'offers.nudge': null,
     });
     expect(await alarmOf(stub)).toBe(T0 + 5 * MINUTE);
 
     // An alarm before anything is due runs nothing and keeps the schedule.
     clock.now = T0 + MINUTE;
     await runInDurableObject(stub, (hub: AgroBotHub) => hub.alarm());
-    expect(runs).toHaveLength(2);
+    expect(runs).toHaveLength(4);
     expect(await alarmOf(stub)).toBe(T0 + 5 * MINUTE);
   });
 
@@ -171,7 +181,12 @@ describe('schedule and alarm (ARCH §9)', () => {
     const stub = await hubWith(clock, runner);
     await stub.ensureArmed();
     await runDurableObjectAlarm(stub);
-    expect(await dueMap(stub)).toEqual({ 'notifications.dispatch': T0, 'catalog.sync': null });
+    expect(await dueMap(stub)).toEqual({
+      'notifications.dispatch': T0,
+      'catalog.sync': null,
+      'offers.expire': null,
+      'offers.nudge': null,
+    });
     expect(await alarmOf(stub)).toBe(T0);
   });
 
