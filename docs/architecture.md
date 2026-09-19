@@ -268,8 +268,10 @@ re-activate them (same rules).
 
 ### Product
 `pending → active` (sync match), or `pending → archived` when renamed to an existing active
-sheet product (references transfer to that product; ADR-0015), `pending → (deleted)` on admin
-reject (offers withdrawn, reservations cancelled), `active ⇄ archived` by sync.
+sheet product (references transfer to that product; ADR-0015). Admin reject withdraws the
+product's offers and cancels its reservations, then `pending → (deleted)` when nothing
+references it, or `pending → archived` under a tombstone slug when offers or reservations do,
+so the records stay and the name is free again (ADR-0018). `active ⇄ archived` by sync.
 
 ## 7. Realtime (WebSocket through the hub)
 
@@ -377,9 +379,11 @@ fetchRows()  ──►  normalizeHeaders()  ──►  parseRow() ×N  ──►
   Manual/command sync checks the actor before fetching and again before applying changes.
 - Validation diagnostics persist reason codes, row numbers (0 for source-wide failures), and
   severity, translated by the UI. Source failures never expose credentials or source bodies.
-- M2 provides transaction hooks for pending resolution, merge and rejection. M3 wires offer
-  references; M4 wires reservation snapshots/cancellation. Until then, attempting a destructive
-  action on a referenced proposal fails safely rather than deleting downstream records.
+- The lifecycle hooks (`domain/catalog/lifecycle.ts`) run inside the catalogue transaction:
+  merge moves the proposal's offers to the sheet product and refuses a producer who would end
+  up with two active offers on it (ADR-0015); reject withdraws the proposal's offers and
+  archives or deletes it (ADR-0018). M4 adds the reservation side: price snapshots on
+  resolution, cancellations on rejection.
 - Zero valid rows → `failed`, nothing applied, N12 to admins.
 - Sheets mode: `GOOGLE_SERVICE_ACCOUNT_JSON` (base64 of the key file), `GOOGLE_SHEET_ID`,
   `GOOGLE_SHEET_RANGE` (default `Productes!A:E`). The sheet must be shared read-only with the

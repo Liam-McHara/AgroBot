@@ -76,6 +76,8 @@ export function createCatalogService(deps: CatalogDeps) {
       decision: 'resolved',
     });
   }
+  /** ADR-0018: a slug no sheet row can ever match, so the original name is free again. */
+  const rejectedSlug = (product: Product) => `${product.slug} [rejected ${product.id.slice(0, 8)}]`;
   const sameContent = (product: Product, row: CatalogRow) =>
     product.status === 'active' &&
     product.name === row.name &&
@@ -303,11 +305,18 @@ export function createCatalogService(deps: CatalogDeps) {
     return product;
   }
   async function reject(actor: Member, id: string) {
+    let affectedBoards: string[] | null = null;
     const notified = await deps.db.transaction(async (tx) => {
       await lock(tx);
       await actorFrom(tx, actor, true);
       const product = await pending(tx, id);
       const affected = await lifecycle.reject(tx, product, actor.id, now());
+      // Withdrawn offers left the board (ARCH §7).
+      if (affected.length > 0) {
+        affectedBoards = (
+          await tx.select({ id: members.id }).from(members).where(eq(members.status, 'approved'))
+        ).map((m) => m.id);
+      }
       const recipients = [
         ...new Set([...(product.proposedBy ? [product.proposedBy] : []), ...affected]),
       ];
@@ -316,10 +325,20 @@ export function createCatalogService(deps: CatalogDeps) {
         name: product.name,
         decision: 'rejected',
       });
-      await tx.delete(products).where(eq(products.id, id));
+      if (await lifecycle.isReferenced(tx, product)) {
+        // ADR-0018: offers (and, from M4, reservations) keep pointing at it, so it is archived
+        // under a tombstone slug; the name is free again and the sync can never revive it.
+        await tx
+          .update(products)
+          .set({ status: 'archived', slug: rejectedSlug(product), updatedAt: now() })
+          .where(eq(products.id, id));
+      } else {
+        await tx.delete(products).where(eq(products.id, id));
+      }
       return rows;
     });
     if (notified > 0) hub.wake();
+    if (affectedBoards) hub.publish(affectedBoards, { type: 'board.changed' });
   }
   async function list(actor: Member, query = '', includePending = true) {
     return deps.db.transaction(async (tx) => {

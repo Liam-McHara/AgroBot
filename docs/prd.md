@@ -366,7 +366,7 @@ Kept in the data model where cheap (price snapshots, timestamps) so they can be 
 | Accessibility / UX | Mobile-first, follows Telegram theme colours (light/dark), touch targets ≥ 44 px, works on the Telegram desktop client too. |
 | Observability | Structured JSON logs with request ids in Workers Logs (3 days of retention on the free plan), `/health` endpoint, error tracking hook (Sentry-compatible, optional). |
 | Quality | Strict TypeScript, lint, unit tests for domain rules, integration tests against real Postgres, e2e tests of the main flows against the real runtime (`wrangler dev`), CI required on every PR. |
-| Data | Nothing is hard-deleted except by explicit admin action on rejected products; everything else is status-based. Backups are Neon's point-in-time restore, a six-hour window on the free plan and no off-site copy (ADR-0016); the M6 restore drill proves it. |
+| Data | Nothing is hard-deleted except by explicit admin action on rejected products that nothing references yet (a rejected product with offers or reservations is archived instead, ADR-0018); everything else is status-based. Backups are Neon's point-in-time restore, a six-hour window on the free plan and no off-site copy (ADR-0016); the M6 restore drill proves it. |
 
 ## 13. Open questions
 
