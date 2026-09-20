@@ -12,6 +12,8 @@ export const E2E_BASE_URL = `http://localhost:${E2E_PORT}`;
 /** The fake Telegram Bot API `start-server.mjs` runs; `GET /messages` lists what was sent. */
 export const E2E_TELEGRAM_PORT = Number(process.env['E2E_TELEGRAM_PORT'] ?? 8089);
 export const E2E_TELEGRAM_URL = `http://127.0.0.1:${E2E_TELEGRAM_PORT}`;
+/** The secret `start-server.mjs` gives the Worker; a spec that plays Telegram sends it back. */
+export const E2E_WEBHOOK_SECRET = 'e2e-webhook-secret-with-at-least-32-characters';
 
 /** Telegram ids the scenarios sign in as through the dev bypass (ARCH §4). */
 export const IDS = {
