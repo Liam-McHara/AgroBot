@@ -10,6 +10,7 @@ import {
 import { isoDateSchema } from '../dates.js';
 import { QUANTITY_MAX } from '../quantity.js';
 import { productSchema } from './catalog.js';
+import { threadStateSchema } from './threads.js';
 
 /**
  * PRD §8 (US-4.1–4.6) and ARCH §11 `/reservations`. As with offers, a body names the offer by
@@ -77,6 +78,8 @@ export const reservationSchema = z.object({
   closedAt: z.iso.datetime().nullable(),
   updatedAt: z.iso.datetime(),
   actions: z.array(z.enum(RESERVATION_ACTIONS)),
+  /** PRD US-4.6: the viewer's unread text messages in this thread (US-5.1). */
+  unread: z.number().int().nonnegative(),
 });
 export type ReservationView = z.infer<typeof reservationSchema>;
 
@@ -90,8 +93,12 @@ export const reservationOfferSchema = z.object({
   available: z.number(),
 });
 
-/** `GET /reservations/:id` and every mutation: the reservation plus its offer. */
-export const reservationDetailSchema = reservationSchema.extend({ offer: reservationOfferSchema });
+/** `GET /reservations/:id` and every mutation: the reservation, its offer and its thread's state. */
+export const reservationDetailSchema = reservationSchema.extend({
+  offer: reservationOfferSchema,
+  /** PRD US-5.1: whether the viewer may still write, and until when once closed. */
+  thread: threadStateSchema,
+});
 export type ReservationDetailView = z.infer<typeof reservationDetailSchema>;
 
 export const reservationsResponseSchema = z.object({ reservations: z.array(reservationSchema) });

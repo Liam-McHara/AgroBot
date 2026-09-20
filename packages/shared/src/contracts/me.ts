@@ -6,6 +6,7 @@ import {
   MEMBER_STATUSES,
 } from '../enums.js';
 import { languageSchema } from './common.js';
+import { unreadCountsSchema } from './threads.js';
 
 /** PRD §10: the group settings, as the Mini App and the jobs read them. */
 export const settingsSchema = z.object({
@@ -18,8 +19,9 @@ export const settingsSchema = z.object({
 });
 
 /**
- * `GET /api/me` (ARCH §11): the identity the gate and the shell need, the member's language
- * and the settings subset the UI reads. M5 adds the unread counts.
+ * `GET /api/me` (ARCH §11): the identity the gate and the shell need, the member's language,
+ * the settings subset the UI reads and the unread counts behind the Reservations badge
+ * (PRD US-4.6); the badge is refreshed over the socket on `message.new` (ARCH §7).
  */
 export const meSchema = z.object({
   id: z.uuid(),
@@ -30,6 +32,7 @@ export const meSchema = z.object({
   role: z.enum(MEMBER_ROLES),
   status: z.enum(MEMBER_STATUSES),
   settings: settingsSchema,
+  unread: unreadCountsSchema,
 });
 export type Me = z.infer<typeof meSchema>;
 

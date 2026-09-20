@@ -296,5 +296,29 @@
   "reservation.done.cancel": "Reserva cancelada. Hemos avisado.",
   "reservation.done.deliver": "Reserva entregada. Hemos avisado.",
   "reservation.done.confirm-and-deliver": "Reserva confirmada y entregada. Hemos avisado.",
-  "reservation.chat_soon": "La conversación con la otra parte llegará en la próxima versión."
+  "thread.heading": "Conversación",
+  "thread.empty": "Todavía no hay mensajes. Poneos de acuerdo sobre cuándo y dónde.",
+  "thread.composer.label": "Mensaje",
+  "thread.composer.placeholder": "Escribe un mensaje…",
+  "thread.composer.send": "Enviar",
+  "thread.sending": "Enviando…",
+  "thread.readonly": {
+    "one": "Conversación cerrada: la reserva se cerró hace más de un día y ya no se puede escribir.",
+    "other": "Conversación cerrada: la reserva se cerró hace más de {count, number} días y ya no se puede escribir."
+  },
+  "thread.writable_until": "Podéis escribir hasta el {when, datetime}.",
+  "thread.open_in_telegram": "Abrir en Telegram",
+  "thread.system.created": "{actor} ha hecho la reserva",
+  "thread.system.confirmed": "{actor} ha confirmado la reserva",
+  "thread.system.rejected": "{actor} ha rechazado la reserva",
+  "thread.system.cancelled": "{actor} ha cancelado la reserva",
+  "thread.system.cancelled_product_rejected": "Reserva cancelada: los administradores han rechazado el producto",
+  "thread.system.delivered": "{actor} ha marcado la reserva como entregada",
+  "thread.system.expired": "La reserva ha caducado sin respuesta",
+  "thread.unread": {
+    "one": "1 mensaje sin leer",
+    "other": "{count, number} mensajes sin leer"
+  },
+  "notification.N9.text": "💬 {sender} te ha escrito sobre la reserva de {quantity, number, 1} {unit} de {product}:\n«{preview}»",
+  "notification.N9.open": "Abrir la conversación"
 }
