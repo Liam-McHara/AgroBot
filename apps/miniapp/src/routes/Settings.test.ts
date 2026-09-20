@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { DEFAULT_SETTINGS, type Me } from '@agrobot/shared';
+import { DEFAULT_SETTINGS, NO_UNREAD, type Me } from '@agrobot/shared';
 import Settings from './Settings.svelte';
 import { fetchMe, updateMe } from '../lib/api/members.js';
 import { language, setLanguage } from '../lib/i18n/index.svelte.js';
@@ -18,6 +18,7 @@ const MARTA: Me = {
   role: 'member',
   status: 'approved',
   settings: DEFAULT_SETTINGS,
+  unread: NO_UNREAD,
 };
 
 beforeEach(async () => {

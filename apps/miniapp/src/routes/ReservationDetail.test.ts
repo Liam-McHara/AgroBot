@@ -1,14 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import type { ReservationDetailView } from '@agrobot/shared';
+import {
+  DEFAULT_SETTINGS,
+  NO_UNREAD,
+  type Me,
+  type MessageView,
+  type ReservationDetailView,
+} from '@agrobot/shared';
 import ReservationDetail from './ReservationDetail.svelte';
+import { ApiError } from '../lib/api/client.js';
 import { actOnReservation, fetchReservation } from '../lib/api/reservations.js';
+import { fetchMessages, postMessage, readThread } from '../lib/api/threads.js';
 import { setLanguage } from '../lib/i18n/index.svelte.js';
+import { meStore } from '../lib/stores/me.svelte.js';
+import { realtime } from '../lib/stores/realtime.svelte.js';
 import { toasts } from '../lib/stores/toast.svelte.js';
 
 vi.mock('../lib/api/reservations.js', () => ({
   fetchReservation: vi.fn(),
   actOnReservation: vi.fn(),
+}));
+vi.mock('../lib/api/threads.js', () => ({
+  fetchMessages: vi.fn(),
+  postMessage: vi.fn(),
+  readThread: vi.fn(),
 }));
 
 const marta = { id: '22222222-2222-4222-8222-222222222222', displayName: 'Marta', username: null };
@@ -18,6 +33,19 @@ const jordi = {
   username: 'jordi',
 };
 const ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+/** The viewer is Marta, the producer. */
+const ME: Me = {
+  id: marta.id,
+  telegramId: '900000001',
+  username: null,
+  displayName: 'Marta',
+  language: 'ca',
+  role: 'member',
+  status: 'approved',
+  settings: DEFAULT_SETTINGS,
+  unread: NO_UNREAD,
+};
 
 const detail = (over: Partial<ReservationDetailView> = {}): ReservationDetailView => ({
   id: ID,
@@ -49,6 +77,7 @@ const detail = (over: Partial<ReservationDetailView> = {}): ReservationDetailVie
   closedAt: null,
   updatedAt: '2026-09-19T08:00:00.000Z',
   actions: ['confirm', 'reject', 'confirm-and-deliver'],
+  unread: 0,
   offer: {
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     status: 'active',
@@ -56,12 +85,46 @@ const detail = (over: Partial<ReservationDetailView> = {}): ReservationDetailVie
     availableUntil: null,
     available: 4,
   },
+  thread: { writable: true, writableUntil: null },
   ...over,
+});
+
+const line = (over: Partial<MessageView> & { id: string }): MessageView => ({
+  reservationId: ID,
+  kind: 'text',
+  body: '',
+  sender: jordi,
+  mine: false,
+  meta: null,
+  createdAt: '2026-09-19T08:05:00.000Z',
+  ...over,
+});
+const CREATED = line({
+  id: 'cccccccc-cccc-4ccc-8ccc-000000000001',
+  kind: 'system',
+  body: 'created',
+  sender: null,
+  meta: { event: 'created', actorId: jordi.id, actorName: 'Jordi', reason: null, cause: null },
+  createdAt: '2026-09-19T08:00:00.000Z',
+});
+const HOLA = line({ id: 'cccccccc-cccc-4ccc-8ccc-000000000002', body: 'Hola! Demà a les 10?' });
+const BON_DIA = line({
+  id: 'cccccccc-cccc-4ccc-8ccc-000000000003',
+  body: 'Bon dia, perfecte',
+  sender: marta,
+  mine: true,
+  createdAt: '2026-09-18T18:00:00.000Z',
 });
 
 beforeEach(() => {
   vi.mocked(fetchReservation).mockReset();
   vi.mocked(actOnReservation).mockReset();
+  vi.mocked(fetchMessages).mockReset();
+  vi.mocked(postMessage).mockReset();
+  vi.mocked(readThread).mockReset();
+  vi.mocked(fetchMessages).mockResolvedValue({ messages: [CREATED], hasMore: false });
+  vi.mocked(readThread).mockResolvedValue({ unread: NO_UNREAD });
+  meStore.me = ME;
   setLanguage('ca');
   toasts.dismiss();
 });
@@ -113,6 +176,8 @@ describe('Reservation detail (PRD US-4.2–4.4, ADR-0014)', () => {
         .map((b) => b.textContent),
     ).toEqual(['Marca com a lliurada', 'Cancel·la la reserva']);
     expect(toasts.current?.message).toBe('Reserva confirmada. Ho hem avisat.');
+    // The transition wrote a system line: the thread is fetched again.
+    await waitFor(() => expect(fetchMessages).toHaveBeenCalledTimes(2));
   });
 
   it('asks before rejecting, takes an optional reason, and sends it trimmed', async () => {
@@ -194,5 +259,165 @@ describe('Reservation detail (PRD US-4.2–4.4, ADR-0014)', () => {
         .getAllByRole('button')
         .map((b) => b.textContent),
     ).toEqual(['Cancelar la reserva']);
+  });
+});
+
+describe('Thread (PRD US-5.1, US-5.2; ADR-0005)', () => {
+  it('shows system lines in my language, their messages on the left, mine on the right, and marks the thread read', async () => {
+    vi.mocked(fetchReservation).mockResolvedValue({ reservation: detail() });
+    vi.mocked(fetchMessages).mockResolvedValue({
+      messages: [CREATED, BON_DIA, HOLA],
+      hasMore: false,
+    });
+    vi.mocked(readThread).mockResolvedValue({ unread: { total: 1, incoming: 1, outgoing: 0 } });
+    render(ReservationDetail, { params: { id: ID } });
+    const thread = await screen.findByTestId('thread');
+    await within(thread).findByText('Hola! Demà a les 10?');
+    expect(within(thread).getByTestId('system-line').textContent).toContain(
+      'Jordi ha fet la reserva',
+    );
+    const bubbles = within(thread).getAllByTestId('message');
+    expect(bubbles.map((b) => [b.dataset['mine'], b.textContent?.includes('Jordi')])).toEqual([
+      ['true', false],
+      ['false', true],
+    ]);
+    expect(bubbles[1]!.textContent).toContain('Hola! Demà a les 10?');
+    expect(within(thread).queryByText('Encara no hi ha missatges', { exact: false })).toBeNull();
+    // Read on open: the badges take what the server answered (PRD US-4.6).
+    await waitFor(() => expect(readThread).toHaveBeenCalledWith(ID));
+    await waitFor(() => expect(meStore.me?.unread.total).toBe(1));
+  });
+
+  it('sends optimistically, replaces the pending bubble with the server copy and clears the box', async () => {
+    vi.mocked(fetchReservation).mockResolvedValue({ reservation: detail() });
+    let resolve!: (value: { message: MessageView }) => void;
+    vi.mocked(postMessage).mockReturnValue(new Promise((r) => (resolve = r)));
+    render(ReservationDetail, { params: { id: ID } });
+    await screen.findByTestId('thread');
+    expect(screen.getByText('Encara no hi ha missatges', { exact: false })).toBeTruthy();
+    const box = screen.getByLabelText('Missatge') as HTMLTextAreaElement;
+    const send = screen.getByTestId('send') as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    await fireEvent.input(box, { target: { value: '  A les 10 al mercat  ' } });
+    expect(send.disabled).toBe(false);
+    await fireEvent.click(send);
+
+    expect(postMessage).toHaveBeenCalledWith(ID, 'A les 10 al mercat');
+    const pending = screen.getByTestId('message');
+    expect(pending.dataset['pending']).toBe('true');
+    expect(pending.textContent).toContain('A les 10 al mercat');
+    expect(pending.textContent).toContain('Enviant…');
+    expect(box.value).toBe('');
+
+    resolve({
+      message: line({
+        id: 'cccccccc-cccc-4ccc-8ccc-000000000009',
+        body: 'A les 10 al mercat',
+        sender: marta,
+        mine: true,
+      }),
+    });
+    await waitFor(() => expect(screen.getByTestId('message').dataset['pending']).toBeUndefined());
+    expect(screen.getByTestId('message').dataset['mine']).toBe('true');
+    expect(screen.getAllByTestId('message')).toHaveLength(1);
+  });
+
+  it('gives the text back and toasts when sending fails; a closed thread reloads the reservation', async () => {
+    vi.mocked(fetchReservation).mockResolvedValue({ reservation: detail() });
+    vi.mocked(postMessage).mockRejectedValue(
+      new ApiError(403, 'THREAD_READONLY', 'Aquesta conversa ja està tancada.'),
+    );
+    render(ReservationDetail, { params: { id: ID } });
+    await screen.findByTestId('thread');
+    const box = screen.getByLabelText('Missatge') as HTMLTextAreaElement;
+    await fireEvent.input(box, { target: { value: 'Massa tard' } });
+    await fireEvent.click(screen.getByTestId('send'));
+    await waitFor(() =>
+      expect(toasts.current).toMatchObject({
+        kind: 'error',
+        message: 'Aquesta conversa ja està tancada.',
+      }),
+    );
+    expect(box.value).toBe('Massa tard');
+    expect(screen.queryByTestId('message')).toBeNull();
+    await waitFor(() => expect(fetchReservation).toHaveBeenCalledTimes(2));
+  });
+
+  it('is read-only with a banner once the window closed, and names the deadline while it is open', async () => {
+    vi.mocked(fetchReservation).mockResolvedValue({
+      reservation: detail({
+        status: 'delivered',
+        actions: [],
+        closedAt: '2026-09-10T09:00:00.000Z',
+        thread: { writable: false, writableUntil: '2026-09-17T09:00:00.000Z' },
+      }),
+    });
+    render(ReservationDetail, { params: { id: ID } });
+    const banner = await screen.findByTestId('thread-readonly');
+    expect(banner.textContent).toContain('Conversa tancada');
+    expect(banner.textContent).toContain('7 dies');
+    expect(screen.queryByLabelText('Missatge')).toBeNull();
+    cleanup();
+
+    vi.mocked(fetchReservation).mockResolvedValue({
+      reservation: detail({
+        status: 'delivered',
+        actions: [],
+        closedAt: '2026-09-19T09:00:00.000Z',
+        thread: { writable: true, writableUntil: '2026-09-26T09:00:00.000Z' },
+      }),
+    });
+    render(ReservationDetail, { params: { id: ID } });
+    await screen.findByLabelText('Missatge');
+    expect(screen.getByText('Podeu escriure-hi fins al 26/09/2026', { exact: false })).toBeTruthy();
+    expect(screen.queryByTestId('thread-readonly')).toBeNull();
+  });
+
+  it('offers Open in Telegram only when the counterpart has a username (US-5.2)', async () => {
+    vi.mocked(fetchReservation).mockResolvedValue({ reservation: detail() });
+    render(ReservationDetail, { params: { id: ID } });
+    const link = await screen.findByTestId('open-in-telegram');
+    expect(link.getAttribute('href')).toBe('https://t.me/jordi');
+    expect(link.textContent).toBe('Obre a Telegram');
+    cleanup();
+
+    vi.mocked(fetchReservation).mockResolvedValue({
+      reservation: detail({ side: 'outgoing', counterpart: marta, actions: ['cancel'] }),
+    });
+    render(ReservationDetail, { params: { id: ID } });
+    await screen.findByTestId('reservation-detail');
+    expect(screen.queryByTestId('open-in-telegram')).toBeNull();
+  });
+
+  it('tells the socket which thread is open, refetches on message.new, and leaves quietly', async () => {
+    vi.mocked(fetchReservation).mockResolvedValue({ reservation: detail() });
+    const setViewing = vi.spyOn(realtime, 'setViewing').mockImplementation(() => {});
+    const handlers: Array<() => void> = [];
+    const on = vi.spyOn(realtime, 'on').mockImplementation((type, handler) => {
+      if (type === 'message.new') {
+        handlers.push(() => handler({ type: 'message.new', reservationId: ID }));
+        handlers.push(() =>
+          handler({ type: 'message.new', reservationId: '99999999-9999-4999-8999-999999999999' }),
+        );
+      }
+      return () => {};
+    });
+    try {
+      const { unmount } = render(ReservationDetail, { params: { id: ID } });
+      await screen.findByTestId('thread');
+      expect(setViewing).toHaveBeenCalledWith(ID);
+      await waitFor(() => expect(fetchMessages).toHaveBeenCalledTimes(1));
+      vi.mocked(fetchMessages).mockResolvedValue({ messages: [CREATED, HOLA], hasMore: false });
+      for (const fire of handlers) fire();
+      await screen.findByText('Hola! Demà a les 10?');
+      // Only the frame about this thread counted.
+      expect(fetchMessages).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(readThread).toHaveBeenCalledTimes(2));
+      unmount();
+      expect(setViewing).toHaveBeenLastCalledWith(null);
+    } finally {
+      on.mockRestore();
+      setViewing.mockRestore();
+    }
   });
 });

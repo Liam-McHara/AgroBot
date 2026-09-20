@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { DEFAULT_SETTINGS, type AdminMember, type Invite, type Me } from '@agrobot/shared';
+import {
+  DEFAULT_SETTINGS,
+  NO_UNREAD,
+  type AdminMember,
+  type Invite,
+  type Me,
+} from '@agrobot/shared';
 import Members from './Members.svelte';
 import {
   adminCreateInvite,
@@ -33,6 +39,7 @@ const ADMIN: Me = {
   role: 'admin',
   status: 'approved',
   settings: DEFAULT_SETTINGS,
+  unread: NO_UNREAD,
 };
 
 const member = (overrides: Partial<AdminMember>): AdminMember => ({

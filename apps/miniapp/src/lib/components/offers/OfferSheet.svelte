@@ -7,7 +7,7 @@
 
   /**
    * ARCH §12 `/`: the offer detail sheet with the reserve form (PRD US-4.1). A successful
-   * reservation lands on its own screen, where the thread will open in M5.
+   * reservation lands on its own screen, with its thread (US-5.1).
    */
   let { offer, onclose }: { offer: OfferView; onclose: () => void } = $props();
 </script>

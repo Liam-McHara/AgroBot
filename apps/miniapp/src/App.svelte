@@ -39,9 +39,11 @@
       if (target && meStore.isApproved) void push(target);
     });
     // ARCH §7: `me.changed` refetches the profile — an approval, a role change, a new
-    // language chosen in another tab — and a reconnect refetches everything we hold.
+    // language chosen in another tab — `message.new` refreshes the unread badge (PRD US-4.6),
+    // and a reconnect refetches everything we hold.
     const unsubscribe = [
       realtime.on('me.changed', () => void meStore.refetch()),
+      realtime.on('message.new', () => void meStore.refetch()),
       realtime.onReconnect(() => void meStore.refetch()),
     ];
     return () => {
