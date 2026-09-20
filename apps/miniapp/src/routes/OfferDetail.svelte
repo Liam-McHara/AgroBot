@@ -6,6 +6,7 @@
   import MyOfferCard from '../lib/components/offers/MyOfferCard.svelte';
   import OfferForm from '../lib/components/offers/OfferForm.svelte';
   import OfferSummary from '../lib/components/offers/OfferSummary.svelte';
+  import ReserveForm from '../lib/components/reservations/ReserveForm.svelte';
   import Screen from '../lib/components/Screen.svelte';
   import { t } from '../lib/i18n/index.svelte.js';
   import { isMine } from '../lib/offers.js';
@@ -112,8 +113,10 @@
       {#if offer.status !== 'active'}
         <p class="hint">{t(`offers.gone.${offer.status}`)}</p>
       {:else}
-        <button type="button" disabled data-testid="reserve">{t('board.reserve')}</button>
-        <p class="hint">{t('board.reserve_soon')}</p>
+        <ReserveForm
+          {offer}
+          onreserved={(reservation) => void push(`/reservations/${reservation.id}`)}
+        />
       {/if}
     </div>
   {/if}

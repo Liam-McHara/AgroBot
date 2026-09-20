@@ -9,6 +9,7 @@ import { realtime } from '../lib/stores/realtime.svelte.js';
 import { toasts } from '../lib/stores/toast.svelte.js';
 
 vi.mock('../lib/api/offers.js', () => ({ fetchBoard: vi.fn() }));
+vi.mock('../lib/api/reservations.js', () => ({ createReservation: vi.fn() }));
 
 const offer = (over: Partial<OfferView> & { id: string }): OfferView => ({
   product: {
@@ -74,13 +75,18 @@ describe('Board (PRD US-3.3, US-3.4)', () => {
     expect(fetchBoard).toHaveBeenCalledWith({ group: 'product', q: '', category: '' });
   });
 
-  it('opens the detail sheet with a reserve button that waits for M4', async () => {
+  it('opens the detail sheet with the reserve form, enabled once a quantity is typed (US-4.1)', async () => {
     render(Board);
     const [row] = await screen.findAllByTestId('offer');
     await fireEvent.click(row!.closest('button')!);
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByTestId('reserve')).toHaveProperty('disabled', true);
-    expect(within(dialog).getByText('Les reserves arribaran a la propera versió.')).toBeTruthy();
+    expect(within(dialog).getByText('Disponibles: 12,5 kg')).toBeTruthy();
+    await fireEvent.input(within(dialog).getByLabelText('Quantitat a reservar (kg)'), {
+      target: { value: '2.5' },
+    });
+    expect(within(dialog).getByTestId('reserve')).toHaveProperty('disabled', false);
+    expect(within(dialog).getByTestId('reserve-total').textContent).toMatch(/Total: 5,88\s*€/);
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Tanca' }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
