@@ -1,6 +1,7 @@
 import {
   parseQuantity,
   productSchema,
+  totalCents,
   type AdminMember,
   type BoardGrouping,
   type BoardView,
@@ -9,11 +10,16 @@ import {
   type MyOfferView,
   type OfferDetailView,
   type OfferView,
+  type ReservationDetailView,
+  type ReservationParty,
+  type ReservationView,
   type Settings,
 } from '@agrobot/shared';
 import type { Member } from '../db/schema/index.js';
 import type { InviteView } from '../domain/members/service.js';
 import type { BoardResult, OfferRecord } from '../domain/offers/service.js';
+import type { PartyRow, ReservationRecord } from '../domain/reservations/queries.js';
+import { allowedActions, partyOf } from '../domain/reservations/rules.js';
 
 /** Rows → the shared contracts. Nothing leaves the API that is not in a schema. */
 
@@ -96,6 +102,64 @@ export function toOfferDetail(record: OfferRecord, viewer: Member): OfferDetailV
     held: mine ? record.held : null,
     openReservations: mine ? record.openReservations : null,
     nudgedAt: mine ? (record.offer.nudgedAt?.toISOString() ?? null) : null,
+  };
+}
+
+const iso = (date: Date | null) => date?.toISOString() ?? null;
+
+const toParty = (row: PartyRow): ReservationParty => ({
+  id: row.id,
+  displayName: row.displayName,
+  username: row.username,
+});
+
+/**
+ * PRD US-4.6: a reservation as one of its parties sees it, with the side they are on and the
+ * actions ARCH §6 allows them right now. The domain has already refused anyone who is not a
+ * party; a viewer who somehow is not one reads it as the requester would and gets no actions.
+ */
+export function toReservation(record: ReservationRecord, viewer: Member): ReservationView {
+  const { reservation } = record;
+  const party = partyOf(reservation, viewer.id);
+  const asProducer = party === 'producer';
+  return {
+    id: reservation.id,
+    offerId: reservation.offerId,
+    product: productSchema.parse(record.product),
+    quantity: record.quantity,
+    unitPriceCents: reservation.unitPriceCents,
+    currency: 'EUR',
+    totalCents: totalCents(record.quantity, reservation.unitPriceCents),
+    status: reservation.status,
+    side: asProducer ? 'incoming' : 'outgoing',
+    requester: toParty(record.requester),
+    producer: toParty(record.producer),
+    counterpart: toParty(asProducer ? record.requester : record.producer),
+    reason: reservation.reason,
+    expiresAt: iso(reservation.expiresAt),
+    createdAt: reservation.createdAt.toISOString(),
+    confirmedAt: iso(reservation.confirmedAt),
+    deliveredAt: iso(reservation.deliveredAt),
+    closedAt: iso(reservation.closedAt),
+    updatedAt: reservation.updatedAt.toISOString(),
+    actions: party ? allowedActions(reservation.status, party) : [],
+  };
+}
+
+/** `GET /reservations/:id` and every mutation: the reservation plus the offer behind it. */
+export function toReservationDetail(
+  record: ReservationRecord,
+  viewer: Member,
+): ReservationDetailView {
+  return {
+    ...toReservation(record, viewer),
+    offer: {
+      id: record.offer.id,
+      status: record.offer.status,
+      note: record.offer.note,
+      availableUntil: record.offer.availableUntil,
+      available: record.offerAvailable,
+    },
   };
 }
 

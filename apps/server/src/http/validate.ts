@@ -22,6 +22,25 @@ export async function parseBody<S extends z.ZodType>(
   return result.data;
 }
 
+/** Like `parseBody`, but an empty body is `{}`: for actions whose every field is optional. */
+export async function parseOptionalBody<S extends z.ZodType>(
+  c: Context<AppContext>,
+  schema: S,
+): Promise<z.infer<S>> {
+  const text = await c.req.text();
+  let raw: unknown = {};
+  if (text.trim() !== '') {
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      throw validationFailed({ body: 'expected JSON' });
+    }
+  }
+  const result = schema.safeParse(raw);
+  if (!result.success) throw validationFailed(result.error.flatten());
+  return result.data;
+}
+
 export function parseQuery<S extends z.ZodType>(c: Context<AppContext>, schema: S): z.infer<S> {
   const result = schema.safeParse(c.req.query());
   if (!result.success) throw validationFailed(result.error.flatten());
