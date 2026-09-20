@@ -8,6 +8,7 @@ import type { CatalogSource } from '../../src/domain/catalog/source.js';
 import { createMembersService } from '../../src/domain/members/service.js';
 import { createOffersService } from '../../src/domain/offers/service.js';
 import { createReservationsService } from '../../src/domain/reservations/service.js';
+import { createThreadsService } from '../../src/domain/threads/service.js';
 import { createCatalogSource } from '../../src/integrations/catalog-source.js';
 import type { SendMessageInput, TelegramSender } from '../../src/integrations/telegram-api.js';
 import { jobs } from '../../src/jobs/index.js';
@@ -23,13 +24,15 @@ export type EnvOverrides = Readonly<Record<string, string | undefined>>;
 /**
  * The hub as the integration tests see it (ARCH §16): no Durable Object, so `runJob` runs the
  * job function in-process against the test database, and `wake`/`publish` are recorded so a
- * test can assert that a commit told the hub.
+ * test can assert that a commit told the hub. `viewing` is the presence a test declares
+ * (`"<memberId>:<reservationId>"`), which is what the N9 throttle asks about (ARCH §8).
  */
 export interface FakeHub extends Hub {
   wakes: number;
   published: Array<{ memberIds: string[]; event: RealtimeEvent }>;
   /** What the in-process dispatcher would have sent to Telegram. */
   sent: SendMessageInput[];
+  viewing: Set<string>;
 }
 
 export function createFakeHub(jobDeps: () => JobDeps): FakeHub {
@@ -37,11 +40,15 @@ export function createFakeHub(jobDeps: () => JobDeps): FakeHub {
     wakes: 0,
     published: [],
     sent: [],
+    viewing: new Set(),
     wake() {
       hub.wakes += 1;
     },
     publish(memberIds, event) {
       hub.published.push({ memberIds: [...memberIds], event });
+    },
+    async isViewing(memberId, reservationId) {
+      return hub.viewing.has(`${memberId}:${reservationId}`);
     },
     async runJob<N extends JobName>(name: N, params: JobParams[N]): Promise<JobResults[N]> {
       const outcome = await jobs[name].run(jobDeps(), params);
@@ -94,6 +101,7 @@ export function testDeps(
   });
   const offers = createOffersService({ db: database.db, hub });
   const reservations = createReservationsService({ db: database.db, hub });
+  const threads = createThreadsService({ db: database.db, hub });
   const deps: AppDeps = {
     db: database.db,
     env,
@@ -102,6 +110,7 @@ export function testDeps(
     catalog,
     offers,
     reservations,
+    threads,
     hub,
   };
   const sender: TelegramSender = options.sender ?? {

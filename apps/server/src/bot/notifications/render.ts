@@ -137,6 +137,20 @@ export const renderers: RendererRegistry = {
     };
   },
 
+  /** PRD N9: the message that opened an unread burst → the other party, with *Open thread*. */
+  N9: (payload, { t, link, language }) => ({
+    text: t('notification.N9.text', {
+      ...productParams(payload, language),
+      sender: escapeHtml(payload.senderName),
+      quantity: payload.quantity,
+      preview: escapeHtml(payload.preview),
+    }),
+    replyMarkup: new InlineKeyboard().url(
+      t('notification.N9.open'),
+      link(`r_${payload.reservationId}`),
+    ),
+  }),
+
   /** PRD N3: a new or re-published offer → every other member, with *Open offer*. */
   N3: (payload, { t, link, language }) => ({
     text: t(payload.republished ? 'notification.N3.republished' : 'notification.N3.text', {

@@ -1,12 +1,14 @@
 import {
   parseQuantity,
   productSchema,
+  systemLineMetaSchema,
   totalCents,
   type AdminMember,
   type BoardGrouping,
   type BoardView,
   type Invite,
   type Me,
+  type MessageView,
   type MyOfferView,
   type OfferDetailView,
   type OfferView,
@@ -14,16 +16,18 @@ import {
   type ReservationParty,
   type ReservationView,
   type Settings,
+  type UnreadCounts,
 } from '@agrobot/shared';
 import type { Member } from '../db/schema/index.js';
 import type { InviteView } from '../domain/members/service.js';
 import type { BoardResult, OfferRecord } from '../domain/offers/service.js';
 import type { PartyRow, ReservationRecord } from '../domain/reservations/queries.js';
 import { allowedActions, partyOf } from '../domain/reservations/rules.js';
+import type { MessageRecord, ThreadSummary } from '../domain/threads/service.js';
 
 /** Rows → the shared contracts. Nothing leaves the API that is not in a schema. */
 
-export function toMe(member: Member, settings: Settings): Me {
+export function toMe(member: Member, settings: Settings, unread: UnreadCounts): Me {
   return {
     id: member.id,
     telegramId: String(member.telegramId),
@@ -33,7 +37,13 @@ export function toMe(member: Member, settings: Settings): Me {
     role: member.role,
     status: member.status,
     settings,
+    unread: toUnreadCounts(unread),
   };
+}
+
+/** PRD US-4.6: the three badge figures, and nothing else a summary may carry. */
+export function toUnreadCounts(unread: UnreadCounts): UnreadCounts {
+  return { total: unread.total, incoming: unread.incoming, outgoing: unread.outgoing };
 }
 
 export function toAdminMember(member: Member): AdminMember {
@@ -114,11 +124,16 @@ const toParty = (row: PartyRow): ReservationParty => ({
 });
 
 /**
- * PRD US-4.6: a reservation as one of its parties sees it, with the side they are on and the
- * actions ARCH §6 allows them right now. The domain has already refused anyone who is not a
- * party; a viewer who somehow is not one reads it as the requester would and gets no actions.
+ * PRD US-4.6: a reservation as one of its parties sees it, with the side they are on, the
+ * actions ARCH §6 allows them right now and their unread messages in its thread (US-5.1). The
+ * domain has already refused anyone who is not a party; a viewer who somehow is not one reads
+ * it as the requester would and gets no actions.
  */
-export function toReservation(record: ReservationRecord, viewer: Member): ReservationView {
+export function toReservation(
+  record: ReservationRecord,
+  viewer: Member,
+  unread: number,
+): ReservationView {
   const { reservation } = record;
   const party = partyOf(reservation, viewer.id);
   const asProducer = party === 'producer';
@@ -143,16 +158,21 @@ export function toReservation(record: ReservationRecord, viewer: Member): Reserv
     closedAt: iso(reservation.closedAt),
     updatedAt: reservation.updatedAt.toISOString(),
     actions: party ? allowedActions(reservation.status, party) : [],
+    unread,
   };
 }
 
-/** `GET /reservations/:id` and every mutation: the reservation plus the offer behind it. */
+/**
+ * `GET /reservations/:id` and every mutation: the reservation, the offer behind it and where
+ * its thread stands for the viewer (PRD US-5.1).
+ */
 export function toReservationDetail(
   record: ReservationRecord,
   viewer: Member,
+  thread: ThreadSummary,
 ): ReservationDetailView {
   return {
-    ...toReservation(record, viewer),
+    ...toReservation(record, viewer, thread.unread),
     offer: {
       id: record.offer.id,
       status: record.offer.status,
@@ -160,6 +180,26 @@ export function toReservationDetail(
       availableUntil: record.offer.availableUntil,
       available: record.offerAvailable,
     },
+    thread: { writable: thread.writable, writableUntil: iso(thread.writableUntil) },
+  };
+}
+
+/**
+ * PRD US-5.1: one line of a thread. A system line's `meta` is validated on the way out; one
+ * that does not parse is shown as a bare line rather than failing the whole page.
+ */
+export function toMessage(record: MessageRecord, viewer: Member): MessageView {
+  const { message } = record;
+  const meta = message.kind === 'system' ? systemLineMetaSchema.safeParse(message.meta) : null;
+  return {
+    id: message.id,
+    reservationId: message.reservationId,
+    kind: message.kind,
+    body: message.body,
+    sender: record.sender,
+    mine: message.senderId !== null && message.senderId === viewer.id,
+    meta: meta?.success ? meta.data : null,
+    createdAt: message.createdAt.toISOString(),
   };
 }
 

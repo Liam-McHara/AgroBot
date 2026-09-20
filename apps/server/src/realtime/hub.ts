@@ -277,6 +277,7 @@ export class AgroBotHub extends DurableObject<Bindings> {
       publish: (memberIds, event) => {
         void this.publish([...memberIds], event);
       },
+      isViewing: (memberId, reservationId) => this.isViewing(memberId, reservationId),
     };
   }
 

@@ -308,3 +308,37 @@ describe('reservation notifications (N6, N7, N8)', () => {
     );
   });
 });
+
+describe('chat notification (N9)', () => {
+  const reservationId = '33333333-3333-4333-8333-333333333333';
+  const payload = {
+    reservationId,
+    senderName: 'Jordi & Co',
+    productName: 'Ous <frescos>',
+    productNameEs: 'Huevos',
+    unitCode: 'dozen' as const,
+    quantity: 2,
+    preview: 'Demà a les 10 <al mercat>?',
+  };
+
+  it('quotes the message that opened the burst, escaped, with an Open thread link', () => {
+    const rendered = renderNotification(env, 'N9', payload, 'ca');
+    expect(rendered.text).toBe(
+      "💬 Jordi &amp; Co t'ha escrit sobre la reserva de 2 dotzena de Ous &lt;frescos&gt;:\n«Demà a les 10 &lt;al mercat&gt;?»",
+    );
+    expect(rendered.replyMarkup!.inline_keyboard).toEqual([
+      [
+        {
+          text: 'Obre la conversa',
+          url: `https://t.me/AgroBotTest/app?startapp=r_${reservationId}`,
+        },
+      ],
+    ]);
+  });
+
+  it('reads in Spanish with the Spanish product name', () => {
+    expect(renderNotification(env, 'N9', payload, 'es').text).toBe(
+      '💬 Jordi &amp; Co te ha escrito sobre la reserva de 2 docena de Huevos:\n«Demà a les 10 &lt;al mercat&gt;?»',
+    );
+  });
+});

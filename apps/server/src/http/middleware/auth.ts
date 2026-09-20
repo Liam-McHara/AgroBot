@@ -19,6 +19,11 @@ export function authenticate(deps: AppDeps) {
   const bypassId = devAuthBypassId(deps.env);
 
   return createMiddleware<AppContext>(async (c, next) => {
+    // Route files may each guard their own paths; the second guard on one request is a no-op.
+    if (c.get('member')) {
+      await next();
+      return;
+    }
     const header = c.req.header('authorization') ?? '';
     const [scheme, ...rest] = header.split(' ');
     const credentials = rest.join(' ').trim();
