@@ -273,7 +273,8 @@ for me.
 - Two tabs: **incoming** (I am the producer) and **outgoing** (I am the requester); each split
   into *active* (pending, confirmed) and *closed* (delivered, rejected, cancelled, expired,
   last 30 days). Rows show product, quantity, price snapshot and total, counterpart, status,
-  unread messages badge.
+  unread messages badge: the counterpart's text messages I have not read yet (US-5.1); system
+  lines do not count. The Reservations tab carries the total.
 
 ### US-5.1 Chat inside the reservation
 **As** either party **I** exchange messages in the reservation's thread **so that** we agree on
@@ -283,7 +284,8 @@ when and where, with the details always in front of us.
   status, counterpart's display name, and the reservation's actions available to me.
 - Text messages, 1–2000 chars. Sent messages appear instantly for both if both are online
   (WebSocket); otherwise the recipient gets **one** Telegram notification per unread burst (no new
-  notification until they open the thread), with an *Open* button that deep-links to the thread.
+  notification until they open the thread or reply), quoting the first message, with an *Open*
+  button that deep-links to the thread. Opening the thread marks it read.
 - Status changes appear as system lines in the thread ("Marta confirmed the reservation").
 - The thread is writable while the reservation is active and for `thread_readonly_days_after_close`
   (default 7) days after it closes; then read-only.

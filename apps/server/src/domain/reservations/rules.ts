@@ -2,9 +2,9 @@ import {
   isDateBefore,
   type MemberStatus,
   type ReservationAction,
-  type ReservationEvent,
   type ReservationState,
   type ReservationStatus,
+  type SystemLineMeta,
 } from '@agrobot/shared';
 import type { OfferSnapshot } from '../offers/rules.js';
 
@@ -158,14 +158,9 @@ export function isExpiryDue(
 }
 
 /**
- * What a system line stores in `messages.meta` (ARCH §5): the transition and who caused it.
- * M5 renders it in the reader's language; `actorId` is `null` when a job or an admin's
- * catalogue decision did it, and `cause` says which.
+ * What a system line stores in `messages.meta` (ARCH §5): the transition and who caused it,
+ * as the shared `systemLineMetaSchema` describes it so the Mini App renders it in the reader's
+ * language (PRD US-5.1). `actorId` is `null` when a job or an admin's catalogue decision did it,
+ * and `cause` says which.
  */
-export interface SystemLineMeta {
-  event: ReservationEvent;
-  actorId: string | null;
-  actorName: string | null;
-  reason: string | null;
-  cause: 'product_rejected' | null;
-}
+export type { SystemLineMeta };

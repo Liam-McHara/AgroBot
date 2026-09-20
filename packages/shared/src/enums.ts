@@ -198,6 +198,9 @@ export type MessageKind = Values<typeof MESSAGE_KINDS>;
 /** PRD US-5.1: text messages are 1–2000 characters. */
 export const MESSAGE_MAX_LENGTH = 2000;
 
+/** PRD N9: how much of the first message of a burst the Telegram notification quotes. */
+export const MESSAGE_PREVIEW_LENGTH = 120;
+
 /** PRD US-3.1 / US-4.2: notes and reasons are at most 200 characters. */
 export const NOTE_MAX_LENGTH = 200;
 export const REASON_MAX_LENGTH = 200;

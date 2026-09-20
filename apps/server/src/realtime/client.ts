@@ -22,7 +22,8 @@ export function hubStub(
  *
  * `wake` and `publish` run after a commit and are handed to `waitUntil`, so the response is
  * not delayed by them and a hub hiccup can never make a committed change look like a failure.
- * `runJob` is awaited: the caller wants the report.
+ * `runJob` and `isViewing` are awaited: the caller wants the answer, and for the chat throttle
+ * a hub that cannot answer means "not viewing", so the member is notified rather than not.
  */
 export function createHubClient(
   namespace: DurableObjectNamespace<AgroBotHub>,
@@ -46,6 +47,14 @@ export function createHubClient(
     publish(memberIds: readonly string[], event: RealtimeEvent) {
       if (memberIds.length === 0) return;
       background('publish', stub.publish([...memberIds], event));
+    },
+    async isViewing(memberId: string, reservationId: string): Promise<boolean> {
+      try {
+        return await stub.isViewing(memberId, reservationId);
+      } catch (error) {
+        logger.warn({ err: error, call: 'isViewing' }, 'hub call failed');
+        return false;
+      }
     },
     async runJob<N extends JobName>(name: N, params: JobParams[N]): Promise<JobResults[N]> {
       const outcome = (await stub.runJob(name, params)) as unknown as RunJobOutcome<N>;

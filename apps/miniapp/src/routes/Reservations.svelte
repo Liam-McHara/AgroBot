@@ -18,7 +18,8 @@
   /**
    * ARCH §12 `/reservations`, PRD US-4.6: incoming (I am the producer) and outgoing (I am the
    * requester), each split into active and closed (last 30 days). Refetches on
-   * `reservation.changed` (ARCH §7) and on reconnect; an answer to an older tab is dropped.
+   * `reservation.changed` and `message.new` (ARCH §7; the rows carry the unread badges of
+   * US-5.1) and on reconnect; an answer to an older tab is dropped.
    */
   let side = $state<ReservationSide>('incoming');
   let tab = $state<ReservationState>('active');
@@ -55,6 +56,7 @@
     void load();
     const unsubscribe = [
       realtime.on('reservation.changed', () => void load()),
+      realtime.on('message.new', () => void load()),
       realtime.onReconnect(() => void load()),
     ];
     return () => {

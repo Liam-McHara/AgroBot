@@ -8,6 +8,7 @@ import {
   createReservationsService,
   type ReservationsService,
 } from './domain/reservations/service.js';
+import { createThreadsService, type ThreadsService } from './domain/threads/service.js';
 import type { HubPort } from './domain/ports.js';
 import { telegramClientOptions, type Bindings, type Env } from './env.js';
 import { createCatalogSource } from './integrations/catalog-source.js';
@@ -38,6 +39,7 @@ export interface Services {
   catalog: CatalogService;
   offers: OffersService;
   reservations: ReservationsService;
+  threads: ThreadsService;
 }
 
 export function createServices(input: { db: Database; env: Env; hub: HubPort }): Services {
@@ -54,6 +56,7 @@ export function createServices(input: { db: Database; env: Env; hub: HubPort }):
     }),
     offers: createOffersService({ db: input.db, hub: input.hub }),
     reservations: createReservationsService({ db: input.db, hub: input.hub }),
+    threads: createThreadsService({ db: input.db, hub: input.hub }),
   };
 }
 

@@ -7,6 +7,7 @@ import {
   initDataUser,
   miniAppReady,
   mountThemeParamsSync,
+  openTelegramLink,
   restoreInitData,
 } from '@telegram-apps/sdk';
 import { pop } from 'svelte-spa-router';
@@ -111,6 +112,21 @@ export function haptic(kind: 'success' | 'error' | 'selection'): void {
     else hapticFeedback.notificationOccurred(kind);
   } catch {
     /* not supported by this client */
+  }
+}
+
+/**
+ * PRD US-5.2 *Open in Telegram*: inside Telegram the client opens the conversation itself;
+ * returns false outside it (or on an old client), so the caller lets the plain link work.
+ */
+export function openInTelegram(url: string): boolean {
+  if (!environment?.inside) return false;
+  try {
+    if (!openTelegramLink.isAvailable()) return false;
+    openTelegramLink(url);
+    return true;
+  } catch {
+    return false;
   }
 }
 

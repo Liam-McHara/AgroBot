@@ -7,6 +7,8 @@ import {
   type ReservationResponse,
   type ReservationsResponse,
 } from '@agrobot/shared';
+import type { Member } from '../../db/schema/index.js';
+import type { ReservationRecord } from '../../domain/reservations/queries.js';
 import { authenticate, requireMember } from '../middleware/auth.js';
 import { toReservation, toReservationDetail } from '../serializers.js';
 import { parseBody, parseOptionalBody, parseQuery, parseUuidParam } from '../validate.js';
@@ -17,7 +19,8 @@ import type { AppContext, AppDeps } from '../context.js';
  * check, the price snapshot, the party and status guards and the deduction on delivery all
  * live in the domain, where the bot's *Confirm* / *Reject* quick actions share them. The fifth
  * action, `confirm-and-deliver`, is the Mini App's one-tap handover (ADR-0014); the bot never
- * offers it.
+ * offers it. Every answer carries the viewer's unread count and, on a detail, the thread's
+ * window (PRD US-5.1), which `domain/threads` computes.
  */
 export function reservationRoutes(deps: AppDeps): Hono<AppContext> {
   const app = new Hono<AppContext>();
@@ -25,20 +28,31 @@ export function reservationRoutes(deps: AppDeps): Hono<AppContext> {
   app.use('/reservations', authenticate(deps), requireMember);
   app.use('/reservations/*', authenticate(deps), requireMember);
 
+  const detail = async (
+    member: Member,
+    record: ReservationRecord,
+  ): Promise<ReservationResponse> => ({
+    reservation: toReservationDetail(record, member, await deps.threads.summary(member, record)),
+  });
+
   app.post('/reservations', async (c) => {
     const member = c.get('member')!;
     const input = await parseBody(c, createReservationSchema);
     const record = await deps.reservations.create(member, input);
-    const body: ReservationResponse = { reservation: toReservationDetail(record, member) };
-    return c.json(body, 201);
+    return c.json(await detail(member, record), 201);
   });
 
   app.get('/reservations', async (c) => {
     const member = c.get('member')!;
     const query = parseQuery(c, reservationsQuerySchema);
-    const records = await deps.reservations.list(member, query);
+    const [records, unread] = await Promise.all([
+      deps.reservations.list(member, query),
+      deps.threads.unread(member),
+    ]);
     const body: ReservationsResponse = {
-      reservations: records.map((record) => toReservation(record, member)),
+      reservations: records.map((record) =>
+        toReservation(record, member, unread.byReservation.get(record.reservation.id) ?? 0),
+      ),
     };
     return c.json(body);
   });
@@ -46,8 +60,7 @@ export function reservationRoutes(deps: AppDeps): Hono<AppContext> {
   app.get('/reservations/:id', async (c) => {
     const member = c.get('member')!;
     const record = await deps.reservations.get(member, parseUuidParam(c, 'id'));
-    const body: ReservationResponse = { reservation: toReservationDetail(record, member) };
-    return c.json(body);
+    return c.json(await detail(member, record));
   });
 
   for (const action of RESERVATION_ACTIONS) {
@@ -59,8 +72,7 @@ export function reservationRoutes(deps: AppDeps): Hono<AppContext> {
           ? await parseOptionalBody(c, reservationActionBodySchema)
           : {};
       const record = await deps.reservations.act(member, parseUuidParam(c, 'id'), action, input);
-      const body: ReservationResponse = { reservation: toReservationDetail(record, member) };
-      return c.json(body);
+      return c.json(await detail(member, record));
     });
   }
 

@@ -4,6 +4,7 @@ import type { CatalogService } from '../domain/catalog/service.js';
 import type { MembersService } from '../domain/members/service.js';
 import type { OffersService } from '../domain/offers/service.js';
 import type { ReservationsService } from '../domain/reservations/service.js';
+import type { ThreadsService } from '../domain/threads/service.js';
 import type { HubPort } from '../domain/ports.js';
 import type { Env } from '../env.js';
 import type { TelegramSender } from '../integrations/telegram-api.js';
@@ -31,6 +32,7 @@ export interface JobDeps {
   members: MembersService;
   offers: OffersService;
   reservations: ReservationsService;
+  threads: ThreadsService;
   /** The hub as the domain sees it; inside the hub it writes to the schedule directly. */
   hub: HubPort;
   now: () => Date;

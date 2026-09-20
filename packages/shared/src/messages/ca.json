@@ -296,5 +296,29 @@
   "reservation.done.cancel": "Reserva cancel·lada. Ho hem avisat.",
   "reservation.done.deliver": "Reserva lliurada. Ho hem avisat.",
   "reservation.done.confirm-and-deliver": "Reserva confirmada i lliurada. Ho hem avisat.",
-  "reservation.chat_soon": "La conversa amb l'altra part arribarà a la propera versió."
+  "thread.heading": "Conversa",
+  "thread.empty": "Encara no hi ha missatges. Poseu-vos d'acord sobre quan i on.",
+  "thread.composer.label": "Missatge",
+  "thread.composer.placeholder": "Escriu un missatge…",
+  "thread.composer.send": "Envia",
+  "thread.sending": "Enviant…",
+  "thread.readonly": {
+    "one": "Conversa tancada: la reserva es va tancar fa més d'un dia i ja no s'hi pot escriure.",
+    "other": "Conversa tancada: la reserva es va tancar fa més de {count, number} dies i ja no s'hi pot escriure."
+  },
+  "thread.writable_until": "Podeu escriure-hi fins al {when, datetime}.",
+  "thread.open_in_telegram": "Obre a Telegram",
+  "thread.system.created": "{actor} ha fet la reserva",
+  "thread.system.confirmed": "{actor} ha confirmat la reserva",
+  "thread.system.rejected": "{actor} ha rebutjat la reserva",
+  "thread.system.cancelled": "{actor} ha cancel·lat la reserva",
+  "thread.system.cancelled_product_rejected": "Reserva cancel·lada: els administradors han rebutjat el producte",
+  "thread.system.delivered": "{actor} ha marcat la reserva com a lliurada",
+  "thread.system.expired": "La reserva ha caducat sense resposta",
+  "thread.unread": {
+    "one": "1 missatge sense llegir",
+    "other": "{count, number} missatges sense llegir"
+  },
+  "notification.N9.text": "💬 {sender} t'ha escrit sobre la reserva de {quantity, number, 1} {unit} de {product}:\n«{preview}»",
+  "notification.N9.open": "Obre la conversa"
 }

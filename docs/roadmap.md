@@ -366,22 +366,46 @@ producer's offer is also `INVALID_TRANSITION` and reserving one's own is `FORBID
 **Spec.** PRD US-5.1–5.2, N9 · ARCH §7, §8 (throttle), §11 (messages, read, presence) · ADR-0005, 0009.
 
 **Tasks**
-- [ ] `domain/threads`: post message (length, party check, read-only after
+- [x] `domain/threads`: post message (length, party check, read-only after
       `thread_readonly_days_after_close`), read markers, presence, unread counts per reservation
       and total; unit tests.
-- [ ] N9 with `dedupe_key` throttle; cleared on read; skipped when recipient is viewing the
+- [x] N9 with `dedupe_key` throttle; cleared on read; skipped when recipient is viewing the
       thread; integration tests for the burst behaviour.
-- [ ] Realtime event `message.new`; API messages (paginated `after`), read; presence as the
-      `{viewing}` socket message answered by `hub.isViewing` (ARCH §7).
-- [ ] Mini App: thread screen (context header with actions from M4, message list, composer with
-      `MainButton`, optimistic send, system lines, read-only banner), unread badges on
+- [x] Realtime event `message.new`; API messages (paginated `after`), read; presence as the
+      `{viewing}` socket message answered by `hub.isViewing` (ARCH §7), which the domain asks
+      through the hub port.
+- [x] Mini App: thread screen (context header with actions from M4, message list, composer with
+      an in-page send button, optimistic send, system lines, read-only banner), unread badges on
       Reservations tab and rows, **Open in Telegram** when counterpart has a username.
-- [ ] `GET /me` returns unread totals; badge updates over the socket.
+- [x] `GET /me` returns unread totals; badge updates over the socket.
 
 **Definition of done**
 - E2E with two contexts: messages appear on both sides within a second; closing one context and
   sending three messages yields exactly one N9 to it; opening the thread clears the badge.
 - A thread of a reservation delivered 8 days ago (test clock) is read-only with a banner.
+
+**Verified in M5:** the two-context Playwright flow (`e2e/tests/thread.spec.ts`) runs against
+`wrangler dev` with the fake Bot API: messages cross within two seconds each way, a
+confirmation from the header lands as a system line on the other side, three messages to a
+closed context earn exactly one N9 quoting the first, the tab and the row count the three on
+return and opening the thread clears them, and a message while looking earns none. The read-only
+window (a delivery, then 7 days − 1 minute and 8 days on a fake clock), the burst throttle at
+the outbox, the paging and the unread counts are integration tests (`test/threads.test.ts`,
+`test/threads-api.test.ts`); the Mini App's thread screen, optimistic send, banner and badges
+are component tests. `pnpm lint`, `pnpm typecheck`, `pnpm test` (shared 44, Mini App 76, server
+327 on Node plus 13 hub tests inside workerd) and `pnpm build` pass; `pnpm e2e` passes membership,
+catalogue, offers, realtime, reservations and thread.
+
+**Spec corrections made in this milestone:** the `message.new` frame carries only the
+reservation id and the Mini App refetches the thread, per ADR-0009's "react by refetching", so
+a message that committed out of order cannot be missed (ARCH §7); reading a thread clears the
+throttle key rather than deleting it, a reply counts as reading, a suspended counterpart gets no
+N9, and the notification quotes the message that opened the burst (ARCH §8); the unread badge
+counts the counterpart's text messages after the reader's last-read message, never system lines,
+and only over reservations *My reservations* lists (PRD US-4.6, ARCH §5); the messages page
+answers `{messages, hasMore}`, the read call answers the badges, rows carry `unread` and the
+detail the thread window (ARCH §11); forms keep in-page primary buttons, as M3 and M4 already
+did, so Telegram's `MainButton` is not used (ARCH §12).
 
 ---
 

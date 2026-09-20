@@ -4,8 +4,6 @@ import type { NotificationKind, UnitCode } from '@agrobot/shared';
  * What each notification kind of PRD §9 stores in `notifications.payload`. The renderer of
  * the same kind reads it back; both sides type against this file so a renamed field cannot
  * silently blank a message.
- *
- * Only the kinds implemented so far are typed; N9 arrives with M5.
  */
 export interface NewApplicantPayload {
   applicantId: string;
@@ -79,6 +77,18 @@ export interface ReservationClosedPayload extends ReservationPayload {
   cause: 'product_rejected' | null;
 }
 
+/**
+ * PRD N9: the first message of an unread burst → the other party (US-5.1). One row per burst:
+ * the `dedupe_key` of ARCH §8 step 3 stops the next ones until the recipient reads the thread.
+ */
+export interface NewChatMessagePayload extends OfferProductPayload {
+  reservationId: string;
+  senderName: string;
+  quantity: number;
+  /** The message that opened the burst, on one line, cut to `MESSAGE_PREVIEW_LENGTH`. */
+  preview: string;
+}
+
 export interface NotificationPayloads {
   N1: NewApplicantPayload;
   N2: MembershipDecidedPayload;
@@ -88,6 +98,7 @@ export interface NotificationPayloads {
   N6: ReservationPayload;
   N7: ReservationExpiringPayload;
   N8: ReservationClosedPayload;
+  N9: NewChatMessagePayload;
   N10: OfferNudgePayload;
   N11: OfferWithdrawnPayload;
   N12: { syncId: string };

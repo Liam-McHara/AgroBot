@@ -45,10 +45,11 @@ const reservation = (over: Partial<ReservationView> & { id: string }): Reservati
   closedAt: null,
   updatedAt: '2026-09-19T08:00:00.000Z',
   actions: ['confirm', 'reject', 'confirm-and-deliver'],
+  unread: 0,
   ...over,
 });
 
-const PENDING = reservation({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' });
+const PENDING = reservation({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', unread: 2 });
 const DELIVERED = reservation({
   id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   status: 'delivered',
@@ -88,6 +89,11 @@ describe('My reservations (PRD US-4.6)', () => {
     expect(row!.textContent).toContain('Reservada per Jordi');
     expect(row!.textContent).toContain('Pendent de confirmar');
     expect(row!.textContent).toContain('Caduca el 21/09/2026');
+    // PRD US-4.6: the unread messages badge of its thread (US-5.1).
+    expect(screen.getByTestId('reservation-unread').textContent).toBe('2');
+    expect(screen.getByTestId('reservation-unread').getAttribute('aria-label')).toBe(
+      '2 missatges sense llegir',
+    );
     expect(fetchReservations).toHaveBeenCalledWith('incoming', 'active');
   });
 
@@ -103,17 +109,21 @@ describe('My reservations (PRD US-4.6)', () => {
     await waitFor(() => expect(fetchReservations).toHaveBeenLastCalledWith('outgoing', 'closed'));
     const [row] = await screen.findAllByTestId('reservation');
     expect(row!.dataset['status']).toBe('delivered');
+    expect(screen.queryByTestId('reservation-unread')).toBeNull();
     expect(row!.textContent).toContain('A Marta');
     expect(row!.textContent).toContain('Lliurada el 19/09/2026');
     await fireEvent.click(row!);
     expect(window.location.hash).toBe(`#/reservations/${DELIVERED.id}`);
   });
 
-  it('refetches on reservation.changed', async () => {
+  it('refetches on reservation.changed and on message.new', async () => {
     const handlers: Array<() => void> = [];
     const on = vi.spyOn(realtime, 'on').mockImplementation((type, handler) => {
       if (type === 'reservation.changed') {
         handlers.push(() => handler({ type: 'reservation.changed', id: PENDING.id }));
+      }
+      if (type === 'message.new') {
+        handlers.push(() => handler({ type: 'message.new', reservationId: PENDING.id }));
       }
       return () => {};
     });
@@ -123,7 +133,7 @@ describe('My reservations (PRD US-4.6)', () => {
       vi.mocked(fetchReservations).mockResolvedValue({ reservations: [] });
       for (const fire of handlers) fire();
       await screen.findByTestId('reservations-empty');
-      expect(fetchReservations).toHaveBeenCalledTimes(2);
+      expect(fetchReservations).toHaveBeenCalledTimes(3);
     } finally {
       on.mockRestore();
     }
