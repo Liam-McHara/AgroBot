@@ -10,7 +10,8 @@ Mini App for the screens.
 
 **2.0 is under construction.** The specification lives in [`docs/`](docs/README.md) and is the
 source of truth. Milestones **M0 Foundation**, **M1 Identity and membership**, **M2 Catalogue**,
-**M2.5 Free hosting** and **M3 Offers and board** are done in code: the workspace runs on
+**M2.5 Free hosting**, **M3 Offers and board**, **M4 Reservations** and **M5 Chat** are done in
+code: the workspace runs on
 Cloudflare's runtime (`wrangler dev` locally), strangers apply with `/start`, admins approve from
 Telegram or the Mini App, products and prices sync from the sheet, members propose missing
 products and publish, edit and withdraw offers on them, everyone sees the board update live over
@@ -22,9 +23,12 @@ part of an offer, which holds the quantity at once; producers confirm or reject 
 Telegram notification or the app, either side marks the handover delivered (which deducts from
 the offer), and pending reservations are reminded and expired by the hub on their own deadlines
 ([ADR-0004](docs/adr/0004-reservation-lifecycle.md),
-[ADR-0014](docs/adr/0014-confirm-and-deliver-shortcut.md)). Every screen speaks Catalan and
+[ADR-0014](docs/adr/0014-confirm-and-deliver-shortcut.md)). Each reservation carries a private
+thread between its two parties, live over the socket, with one Telegram notification per unread
+burst and a badge on the Reservations tab
+([ADR-0005](docs/adr/0005-in-app-chat-per-reservation.md)). Every screen speaks Catalan and
 Spanish. What M2.5 still needs is a **first deploy to the staging Worker**, which takes a
-Cloudflare and a Neon account ([first-time setup](#first-time-setup) below); then M5 in
+Cloudflare and a Neon account ([first-time setup](#first-time-setup) below); then M6 in
 [docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under [`legacy/`](legacy/README.md).
 
 | Document | Purpose |
@@ -113,7 +117,11 @@ board shows everyone else's offers live, and the hub's daily jobs expire dated o
 about idle ones. Reserving from the board holds the quantity (M4): the producer gets *Confirm*
 · *Reject* · *Open* in Telegram, **Reservations** lists incoming and outgoing ones, and the
 reservation screen carries the actions each side may take, including the producer's one-tap
-*confirm and mark delivered* for a handover that already happened.
+*confirm and mark delivered* for a handover that already happened. Under that header sits the
+reservation's thread (M5): messages cross live while both are looking, the absent side gets one
+Telegram notification per unread burst with an *Open the conversation* button, the Reservations
+tab and rows count what is unread, and the thread turns read-only seven days after the
+reservation closes. *Open in Telegram* appears when the counterpart has a public username.
 
 To check the full M2 scenario without a Google account:
 

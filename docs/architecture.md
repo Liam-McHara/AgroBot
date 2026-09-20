@@ -207,6 +207,11 @@ Derived, never stored:
 - `offer.available = offer.quantity − offer.held`
 - Board query: offers `status='active'`, `available > 0`, `(available_until IS NULL OR
   available_until >= today_madrid)`, producer `status='approved'`, producer ≠ me.
+- `unread(member, reservation) = count of messages WHERE kind='text' AND sender_id ≠ member AND
+  created_at > created_at of thread_reads.last_read_message_id` (or `last_read_at` when the
+  marker points nowhere), over the reservations the member is a party of and *My reservations*
+  lists (active, or closed in the last 30 days), so a badge never points at a row that is not
+  there. System lines never count: N8 already told the member.
 
 Indexes: `reservations(offer_id, status)`, `reservations(requester_id, status)`,
 `reservations(producer_id, status)`, `reservations(status, expires_at)`,
@@ -297,7 +302,7 @@ so the records stay and the name is free again (ADR-0018). `active ⇄ archived`
   hub, which redeems the ticket and accepts the socket with the **Hibernation API**, tagged by
   member id. An idle socket costs no duration; the hub is asleep between events.
 - Events are JSON frames named as before: `board.changed {}`, `reservation.changed {id}`,
-  `message.new {reservationId, message}`, `me.changed {}`. Keep-alives use the platform's
+  `message.new {reservationId}`, `me.changed {}`. Keep-alives use the platform's
   auto-response so a ping does not wake the object.
 - Domain services call `hub.publish(memberIds, event)` on the hub port (`domain/ports.ts`)
   after the transaction commits; the Worker's implementation is one RPC per commit, in
@@ -330,8 +335,12 @@ so the records stay and the name is free again (ADR-0018). `active ⇄ archived`
    and a few seconds.
 3. Chat throttle (N9): `dedupe_key = 'chat:<reservationId>:<memberId>'`. Enqueue is skipped if a
    row with that key exists and the member has not read the thread since (`thread_reads`), or
-   if `hub.isViewing(memberId, reservationId)` says the recipient has the thread open (§7).
-   Reading the thread (`POST …/read`) deletes the key so the next burst notifies again.
+   if `hub.isViewing(memberId, reservationId)` says the recipient has the thread open (§7), or
+   if the recipient is not an approved member (a suspended one cannot open the thread, PRD §2).
+   Reading the thread (`POST …/read`) clears the key (the row keeps its history, `dedupe_key`
+   becomes `NULL`) so the next burst notifies again; posting a message counts as reading, so a
+   reply re-arms the throttle for the one who replied. The row quotes the message that opened
+   the burst, cut to `MESSAGE_PREVIEW_LENGTH` characters.
 4. Quick actions edit the original notification message after use ("✅ Confirmed") to make
    stale buttons visibly stale.
 
@@ -429,12 +438,12 @@ All under `/api`, JSON, auth as §4. Contracts are zod schemas in
 | `POST /offers/:id/still-available` | producer | Reset nudge counter. |
 | `GET /offers/:id` | member | Detail (for deep links). |
 | `POST /reservations` | member | `{offerId, quantity}`; 409 `INSUFFICIENT_AVAILABILITY {available}`; 403 for my own offer; 422 `INVALID_TRANSITION` for a withdrawn, expired or suspended producer's offer. |
-| `GET /reservations?side=incoming\|outgoing&state=active\|closed` | member | `state` defaults to `active`; `closed` covers the last 30 days by `closed_at`. |
-| `GET /reservations/:id` | party | Reservation + offer + product + counterpart summary. |
+| `GET /reservations?side=incoming\|outgoing&state=active\|closed` | member | `state` defaults to `active`; `closed` covers the last 30 days by `closed_at`. Rows carry the viewer's `unread` count (§5). |
+| `GET /reservations/:id` | party | Reservation + offer + product + counterpart summary, `unread`, and `thread {writable, writableUntil}` per PRD US-5.1. |
 | `POST /reservations/:id/confirm` · `/reject` · `/cancel` · `/deliver` · `/confirm-and-deliver` | party (per §6) | `{reason?}` for reject/cancel (an empty body is fine); the last one is the Mini App's one-tap handover (ADR-0014). All answer the reservation with its offer and the caller's allowed actions. |
-| `GET /reservations/:id/messages?after=<id>` | party | Paginated thread. |
+| `GET /reservations/:id/messages?after=<id>&limit=` | party | The thread oldest first, `{messages, hasMore}`, in pages of up to 100 starting after a message the caller holds; system lines carry their `meta`, text lines their sender and `mine`. |
 | `POST /reservations/:id/messages` | party | `{body}`. 403 `THREAD_READONLY` when closed too long. |
-| `POST /reservations/:id/read` | party | Mark read up to latest. |
+| `POST /reservations/:id/read` | party | Mark read up to latest; answers `{unread}` (total, incoming, outgoing) as the badges now stand. |
 | `POST /events/ticket` | any auth | Single-use 30 s ticket for the realtime socket (§7). |
 | `GET /events?ticket=` | member (via ticket) | WebSocket upgrade, handed to the hub. Presence is a socket message, not an endpoint (§7). |
 | `GET /admin/members?status=` | admin | |
@@ -469,8 +478,11 @@ Screens (routes):
 
 Behaviour:
 - Bottom navigation: Board · My offers · Reservations (badge) · Settings · Admin (if admin).
-- Telegram theme via `themeParams` → CSS variables; `MainButton` used for the primary action of
-  forms (publish, reserve, send); `BackButton` wired to router; haptic feedback on actions.
+- Telegram theme via `themeParams` → CSS variables; forms carry their primary action as an
+  in-page button (publish, reserve, send), which also works in the plain browser the e2e suite
+  drives, so Telegram's `MainButton` is not used; `BackButton` wired to router; haptic feedback
+  on actions; *Open in Telegram* goes through the SDK's `openTelegramLink` inside Telegram and
+  is a plain `https://t.me/<username>` link elsewhere.
 - Data layer: small fetch wrapper adding the `tma` header; per-screen stores with `refetch()`;
   the realtime store (one WebSocket, §7) dispatches refetches. Optimistic UI only for sending
   chat messages.

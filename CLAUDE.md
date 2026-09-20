@@ -120,6 +120,16 @@ Postgres says so; `hub.wake()` makes every deadline job due) and the catalogue c
 reservation first, then offer. Focused checks: `pnpm --filter @agrobot/server exec vitest run
 test/reservations.test.ts test/reservations-api.test.ts test/reservations-jobs.test.ts`.
 
+Threads: `domain/threads` owns the conversation of a reservation (post, the paged list, read
+markers, unread counts, the read-only window) and the N9 burst throttle: one outbox row per
+unread burst through the `chat:<reservationId>:<memberId>` dedupe key, cleared when the
+recipient reads or replies, and none at all while `hub.isViewing` says they have the thread open
+(the `{viewing}` socket message). Admins are not parties and cannot read a thread. The Mini App
+refetches the thread whole on `message.new` and marks it read, which moves the badges. Focused
+checks: `pnpm --filter @agrobot/server exec vitest run test/threads.test.ts
+test/threads-api.test.ts`; the e2e flow is `e2e/tests/thread.spec.ts`, which runs last and
+builds on the offer the reservations spec leaves.
+
 ## Git
 
 - Branch per milestone or task (`m0-foundation`, `m3-board-search`).
