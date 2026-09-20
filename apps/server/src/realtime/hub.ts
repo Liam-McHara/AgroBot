@@ -10,7 +10,7 @@ import { createJobDeps, openDatabase } from '../deps.js';
 import type { HubPort } from '../domain/ports.js';
 import { parseEnv, type Bindings } from '../env.js';
 import { isAppError } from '../errors.js';
-import { JOB_NAMES, jobs } from '../jobs/index.js';
+import { DEADLINE_JOBS, JOB_NAMES, jobs } from '../jobs/index.js';
 import type { JobName, JobOutcome, JobParams, JobResults } from '../jobs/types.js';
 import { LOG_LEVELS, createLogger, type LogLevel, type Logger } from '../logger.js';
 
@@ -19,10 +19,11 @@ import { LOG_LEVELS, createLogger, type LogLevel, type Logger } from '../logger.
  *
  * **Jobs (ARCH §9).** A `schedule(job, due_at)` table in the object's SQLite and a single
  * alarm set to the earliest `due_at`. When the alarm fires, every due job runs, says when it
- * wants to run next, and the alarm is re-armed. `wake()` makes `notifications.dispatch` due
- * now; the Worker calls it after any commit that enqueued a notification, so the outbox is
- * drained within a second without anything polling Postgres. `ensureArmed()` is the
- * 15-minute heartbeat's liveness check and touches only this storage.
+ * wants to run next, and the alarm is re-armed. `wake()` makes the deadline jobs (the outbox
+ * dispatcher, the reservation reminder and expiry) due now; the Worker calls it after any
+ * commit that enqueued a notification or created a deadline, so the outbox is drained within a
+ * second and a deadline is never missed without anything polling Postgres. `ensureArmed()` is
+ * the 15-minute heartbeat's liveness check and touches only this storage.
  *
  * **Realtime (ARCH §7).** Tickets issued by `POST /api/events/ticket` are redeemed on the
  * WebSocket upgrade; sockets are accepted with the Hibernation API, tagged by member id, so an
@@ -175,13 +176,14 @@ export class AgroBotHub extends DurableObject<Bindings> {
   }
 
   /**
-   * ARCH §8 step 2: a notification was committed. Make the dispatcher due now and set the
-   * alarm, which fires within about a second.
+   * ARCH §8 step 2, §9: a commit enqueued a notification or created or moved a deadline. Make
+   * the deadline jobs due now and set the alarm, which fires within about a second; each job
+   * then does its work or reads from Postgres when it is next due, while the database is awake.
    */
   async wake(): Promise<void> {
     const now = this.clock();
     this.seedIfEmpty(now);
-    this.markDue('notifications.dispatch', now);
+    this.markDeadlinesDue(now);
     await this.arm();
   }
 
@@ -270,7 +272,7 @@ export class AgroBotHub extends DurableObject<Bindings> {
   private localPort(): HubPort {
     return {
       wake: () => {
-        this.markDue('notifications.dispatch', this.clock());
+        this.markDeadlinesDue(this.clock());
       },
       publish: (memberIds, event) => {
         void this.publish([...memberIds], event);
@@ -302,6 +304,12 @@ export class AgroBotHub extends DurableObject<Bindings> {
       dueAt,
       failures,
     );
+  }
+
+  private markDeadlinesDue(at: number): void {
+    for (const job of DEADLINE_JOBS) {
+      if (this.jobNames.includes(job)) this.markDue(job, at);
+    }
   }
 
   /** Bring a job's `due_at` forward to `at` if it is later or unset; never push it back. */

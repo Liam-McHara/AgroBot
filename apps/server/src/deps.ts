@@ -4,6 +4,10 @@ import { createDatabase, type Database, type DatabaseHandle } from './db/client.
 import { createCatalogService, type CatalogService } from './domain/catalog/service.js';
 import { createMembersService, type MembersService } from './domain/members/service.js';
 import { createOffersService, type OffersService } from './domain/offers/service.js';
+import {
+  createReservationsService,
+  type ReservationsService,
+} from './domain/reservations/service.js';
 import type { HubPort } from './domain/ports.js';
 import { telegramClientOptions, type Bindings, type Env } from './env.js';
 import { createCatalogSource } from './integrations/catalog-source.js';
@@ -33,6 +37,7 @@ export interface Services {
   members: MembersService;
   catalog: CatalogService;
   offers: OffersService;
+  reservations: ReservationsService;
 }
 
 export function createServices(input: { db: Database; env: Env; hub: HubPort }): Services {
@@ -48,6 +53,7 @@ export function createServices(input: { db: Database; env: Env; hub: HubPort }):
       hub: input.hub,
     }),
     offers: createOffersService({ db: input.db, hub: input.hub }),
+    reservations: createReservationsService({ db: input.db, hub: input.hub }),
   };
 }
 
