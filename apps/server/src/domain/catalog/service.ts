@@ -305,20 +305,22 @@ export function createCatalogService(deps: CatalogDeps) {
     return product;
   }
   async function reject(actor: Member, id: string) {
-    let affectedBoards: string[] | null = null;
+    let affectedBoards: string[] = [];
+    let changed: Array<{ id: string; memberIds: string[] }> = [];
     const notified = await deps.db.transaction(async (tx) => {
       await lock(tx);
       await actorFrom(tx, actor, true);
       const product = await pending(tx, id);
-      const affected = await lifecycle.reject(tx, product, actor.id, now());
-      // Withdrawn offers left the board (ARCH §7).
-      if (affected.length > 0) {
+      const outcome = await lifecycle.reject(tx, product, actor.id, now());
+      changed = outcome.changed;
+      // Withdrawn offers left the board, cancelled reservations released quantity (ARCH §7).
+      if (outcome.producerIds.length > 0 || outcome.boardAudience.length > 0) {
         affectedBoards = (
           await tx.select({ id: members.id }).from(members).where(eq(members.status, 'approved'))
         ).map((m) => m.id);
       }
       const recipients = [
-        ...new Set([...(product.proposedBy ? [product.proposedBy] : []), ...affected]),
+        ...new Set([...(product.proposedBy ? [product.proposedBy] : []), ...outcome.producerIds]),
       ];
       const rows = await enqueueNotifications(tx, recipients, 'N5', {
         productId: product.id,
@@ -326,8 +328,8 @@ export function createCatalogService(deps: CatalogDeps) {
         decision: 'rejected',
       });
       if (await lifecycle.isReferenced(tx, product)) {
-        // ADR-0018: offers (and, from M4, reservations) keep pointing at it, so it is archived
-        // under a tombstone slug; the name is free again and the sync can never revive it.
+        // ADR-0018: offers and their reservations keep pointing at it, so it is archived under
+        // a tombstone slug; the name is free again and the sync can never revive it.
         await tx
           .update(products)
           .set({ status: 'archived', slug: rejectedSlug(product), updatedAt: now() })
@@ -335,10 +337,13 @@ export function createCatalogService(deps: CatalogDeps) {
       } else {
         await tx.delete(products).where(eq(products.id, id));
       }
-      return rows;
+      return rows + outcome.notified;
     });
     if (notified > 0) hub.wake();
-    if (affectedBoards) hub.publish(affectedBoards, { type: 'board.changed' });
+    for (const change of changed) {
+      hub.publish(change.memberIds, { type: 'reservation.changed', id: change.id });
+    }
+    if (affectedBoards.length > 0) hub.publish(affectedBoards, { type: 'board.changed' });
   }
   async function list(actor: Member, query = '', includePending = true) {
     return deps.db.transaction(async (tx) => {

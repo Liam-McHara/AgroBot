@@ -161,13 +161,19 @@ export function createOffersService(deps: OffersDeps) {
     return rows.map((row) => row.id);
   }
 
-  /** Lock the offer row (the reservation of M4 locks it the same way) and read it whole. */
+  /**
+   * Lock the offer row, then read it whole in a statement of its own: under READ COMMITTED
+   * each statement takes a fresh snapshot, so `held` counts every reservation committed while
+   * we waited for the lock. Reservation creation locks the same row the same way (ARCH §6).
+   */
   async function lockOffer(tx: Transaction, offerId: string): Promise<OfferRecord> {
-    const [row] = await selectRecords(tx)
+    const [locked] = await tx
+      .select({ id: offers.id })
+      .from(offers)
       .where(eq(offers.id, offerId))
-      .for('update', { of: offers });
-    if (!row) throw notFound({ offerId });
-    return toRecord(row);
+      .for('update');
+    if (!locked) throw notFound({ offerId });
+    return loadOffer(tx, offerId);
   }
 
   async function loadOffer(tx: Transaction, offerId: string): Promise<OfferRecord> {
