@@ -6,6 +6,7 @@ import type { Logger } from '../logger.js';
 import type { Member } from '../db/schema/index.js';
 import type { MembersService } from '../domain/members/service.js';
 import type { OffersService } from '../domain/offers/service.js';
+import type { ReservationsService } from '../domain/reservations/service.js';
 import type { Hub } from '../realtime/port.js';
 
 /**
@@ -19,6 +20,7 @@ export interface AppDeps {
   readonly members: MembersService;
   readonly catalog: CatalogService;
   readonly offers: OffersService;
+  readonly reservations: ReservationsService;
   /** The one hub (ADR-0017): jobs on demand, socket tickets, and the upgrade hand-off. */
   readonly hub: Hub;
 }

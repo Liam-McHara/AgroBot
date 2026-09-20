@@ -32,3 +32,13 @@ export function quantityStep(unitCode: UnitCode): string {
 export function parseQuantity(value: string | number): number {
   return typeof value === 'number' ? value : Number(value);
 }
+
+/**
+ * PRD US-4.6, US-5.1: a reservation's total, in integer cents, from its quantity and the unit
+ * price it snapshotted; `null` while the product's price is pending (PRD US-2.2). Half cents
+ * round away from zero, as a till would.
+ */
+export function totalCents(quantity: number, unitPriceCents: number | null): number | null {
+  if (unitPriceCents === null) return null;
+  return Math.round(quantity * unitPriceCents);
+}

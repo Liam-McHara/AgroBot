@@ -109,7 +109,16 @@ Focused checks: `pnpm --filter @agrobot/server exec vitest run test/offers.test.
 test/offers-api.test.ts test/offers-jobs.test.ts` (the last one drives the jobs with a fake
 clock). The e2e suite runs a fake Telegram Bot API (`e2e/start-server.mjs`, `TELEGRAM_API_ROOT`)
 and reads what the hub dispatched at `GET /messages`, which is how a notification is asserted
-end to end; the variable is refused in production.
+end to end; the variable is refused in production. A spec can also play Telegram: POST a
+`callback_query` update to `/telegram/webhook` with the e2e secret header to tap a quick action.
+
+Reservations: `domain/reservations` owns create (offer row locked, then `held` read in a second
+statement), the five actions of ARCH §6 (`confirm-and-deliver` is the Mini App's, never a quick
+action), the list, the two deadline jobs (`reservations.remind`, `reservations.expire`, due when
+Postgres says so; `hub.wake()` makes every deadline job due) and the catalogue cascade
+(`cascade.ts`: price snapshots on resolution, cancellations on rejection). Row locks go
+reservation first, then offer. Focused checks: `pnpm --filter @agrobot/server exec vitest run
+test/reservations.test.ts test/reservations-api.test.ts test/reservations-jobs.test.ts`.
 
 ## Git
 

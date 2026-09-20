@@ -157,6 +157,37 @@ export const RESERVATION_CLOSED_STATUSES = [
 export const RESERVATION_SIDES = ['incoming', 'outgoing'] as const;
 export type ReservationSide = Values<typeof RESERVATION_SIDES>;
 
+/** PRD US-4.6: the two tabs of *My reservations*. */
+export const RESERVATION_STATES = ['active', 'closed'] as const;
+export type ReservationState = Values<typeof RESERVATION_STATES>;
+
+/** PRD US-4.6: the *closed* tab shows the last 30 days. */
+export const RESERVATION_CLOSED_WINDOW_DAYS = 30;
+
+/**
+ * ARCH §6 reservation machine: what a party can ask for. `confirm-and-deliver` is the top row
+ * travelled in one transaction, a Mini App action only (ADR-0014).
+ */
+export const RESERVATION_ACTIONS = [
+  'confirm',
+  'reject',
+  'cancel',
+  'deliver',
+  'confirm-and-deliver',
+] as const;
+export type ReservationAction = Values<typeof RESERVATION_ACTIONS>;
+
+/** ARCH §6: the transitions that write a system line into the thread (PRD US-5.1). */
+export const RESERVATION_EVENTS = [
+  'created',
+  'confirmed',
+  'rejected',
+  'cancelled',
+  'delivered',
+  'expired',
+] as const;
+export type ReservationEvent = Values<typeof RESERVATION_EVENTS>;
+
 // ---------------------------------------------------------------------------
 // Threads (PRD US-5.1, ARCH §5 messages)
 // ---------------------------------------------------------------------------

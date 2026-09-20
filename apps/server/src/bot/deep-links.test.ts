@@ -29,8 +29,8 @@ describe('deep links (ARCH §4)', () => {
   });
 
   it('ignores callback data it does not know', () => {
-    expect(parseQuickAction('confirm:abc')).toBeNull();
-    expect(parseQuickAction('confirm:22222222-2222-4222-8222-222222222222')).toBeNull();
+    expect(parseQuickAction('explode:abc')).toBeNull();
+    expect(parseQuickAction('explode:22222222-2222-4222-8222-222222222222')).toBeNull();
     expect(parseQuickAction('approve:not-a-uuid')).toBeNull();
   });
 });

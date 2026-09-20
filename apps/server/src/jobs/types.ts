@@ -3,6 +3,7 @@ import type { CatalogSync } from '../db/schema/index.js';
 import type { CatalogService } from '../domain/catalog/service.js';
 import type { MembersService } from '../domain/members/service.js';
 import type { OffersService } from '../domain/offers/service.js';
+import type { ReservationsService } from '../domain/reservations/service.js';
 import type { HubPort } from '../domain/ports.js';
 import type { Env } from '../env.js';
 import type { TelegramSender } from '../integrations/telegram-api.js';
@@ -29,6 +30,7 @@ export interface JobDeps {
   catalog: CatalogService;
   members: MembersService;
   offers: OffersService;
+  reservations: ReservationsService;
   /** The hub as the domain sees it; inside the hub it writes to the schedule directly. */
   hub: HubPort;
   now: () => Date;
@@ -40,6 +42,8 @@ export interface JobParams {
   'catalog.sync': { trigger: 'manual' | 'command'; actorId: string } | undefined;
   'offers.expire': undefined;
   'offers.nudge': undefined;
+  'reservations.remind': undefined;
+  'reservations.expire': undefined;
 }
 
 export interface JobResults {
@@ -47,6 +51,8 @@ export interface JobResults {
   'catalog.sync': CatalogSync;
   'offers.expire': { expired: number };
   'offers.nudge': { nudged: number; stale: number; renudged: number };
+  'reservations.remind': { reminded: number };
+  'reservations.expire': { expired: number };
 }
 
 export type JobName = keyof JobParams & keyof JobResults;

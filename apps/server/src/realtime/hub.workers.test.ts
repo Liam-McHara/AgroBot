@@ -100,6 +100,8 @@ describe('schedule and alarm (ARCH §9)', () => {
       'notifications.dispatch',
       'offers.expire',
       'offers.nudge',
+      'reservations.expire',
+      'reservations.remind',
     ]);
     expect(schedule.every((row) => row.dueAt === T0 && row.failures === 0)).toBe(true);
     expect(await alarmOf(stub)).toBe(T0);
@@ -126,6 +128,8 @@ describe('schedule and alarm (ARCH §9)', () => {
       'notifications.dispatch',
       'offers.expire',
       'offers.nudge',
+      'reservations.expire',
+      'reservations.remind',
     ]);
     expect(runs.every((run) => run.params === undefined && run.at === T0)).toBe(true);
     expect(await dueMap(stub)).toEqual({
@@ -134,13 +138,15 @@ describe('schedule and alarm (ARCH §9)', () => {
       // Unscripted in this test: the fake runner answers "nothing due".
       'offers.expire': null,
       'offers.nudge': null,
+      'reservations.expire': null,
+      'reservations.remind': null,
     });
     expect(await alarmOf(stub)).toBe(T0 + 5 * MINUTE);
 
     // An alarm before anything is due runs nothing and keeps the schedule.
     clock.now = T0 + MINUTE;
     await runInDurableObject(stub, (hub: AgroBotHub) => hub.alarm());
-    expect(runs).toHaveLength(4);
+    expect(runs).toHaveLength(6);
     expect(await alarmOf(stub)).toBe(T0 + 5 * MINUTE);
   });
 
@@ -186,6 +192,8 @@ describe('schedule and alarm (ARCH §9)', () => {
       'catalog.sync': null,
       'offers.expire': null,
       'offers.nudge': null,
+      'reservations.expire': null,
+      'reservations.remind': null,
     });
     expect(await alarmOf(stub)).toBe(T0);
   });

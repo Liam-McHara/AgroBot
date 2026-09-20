@@ -173,9 +173,9 @@ export function createBot(deps: AppDeps): Bot {
 
   /**
    * PRD §9 quick actions: `approve:<memberId>` / `reject:<memberId>` from N1, `still:<offerId>`
-   * / `withdraw:<offerId>` from N10. Idempotent and authorized in the domain; a stale button
-   * explains itself and the message loses its buttons so it visibly stops being one (ARCH §8
-   * step 4).
+   * / `withdraw:<offerId>` from N10, `confirm:<reservationId>` / `refuse:<reservationId>` from
+   * N6 and N7. Idempotent and authorized in the domain; a stale button explains itself and the
+   * message loses its buttons so it visibly stops being one (ARCH §8 step 4).
    */
   bot.on('callback_query:data', async (ctx) => {
     const { member: actor } = await deps.members.identify(identityOf(ctx.from));
@@ -187,6 +187,10 @@ export function createBot(deps: AppDeps): Bot {
     }
     if (parsed.action === 'still' || parsed.action === 'withdraw') {
       await offerQuickAction(ctx, actor, parsed.action, parsed.entityId);
+      return;
+    }
+    if (parsed.action === 'confirm' || parsed.action === 'refuse') {
+      await reservationQuickAction(ctx, actor, parsed.action, parsed.entityId);
       return;
     }
 
@@ -235,6 +239,68 @@ export function createBot(deps: AppDeps): Bot {
       throw error;
     }
   });
+
+  /**
+   * PRD US-4.2 / N6, N7: *Confirm* and *Reject* on a reservation, through the same domain call
+   * as the API (`confirm-and-deliver` is never offered here, ADR-0014). A stale button — the
+   * reservation was cancelled or expired meanwhile — answers with its current status and loses
+   * its buttons (ARCH §8 step 4).
+   */
+  async function reservationQuickAction(
+    ctx: Context,
+    actor: Member,
+    action: 'confirm' | 'refuse',
+    reservationId: string,
+  ): Promise<void> {
+    const t = createTranslator(actor.language);
+    try {
+      const record = await deps.reservations.act(
+        actor,
+        reservationId,
+        action === 'confirm' ? 'confirm' : 'reject',
+      );
+      await ctx.answerCallbackQuery({
+        text: t(
+          action === 'confirm'
+            ? 'quick_action.reservation_confirmed'
+            : 'quick_action.reservation_rejected',
+          { name: record.requester.displayName },
+        ),
+      });
+      await appendOutcome(
+        ctx,
+        t(
+          action === 'confirm' ? 'notification.N6.done.confirmed' : 'notification.N6.done.rejected',
+        ),
+      );
+    } catch (error) {
+      if (isAppError(error, 'INVALID_TRANSITION')) {
+        const current = await deps.reservations.get(actor, reservationId).catch(() => null);
+        const status = current
+          ? t(`reservation.status.${current.reservation.status}` as MessageKey)
+          : t('quick_action.reservation_not_found');
+        await ctx.answerCallbackQuery({
+          text: t('quick_action.reservation_not_pending', { status }),
+        });
+        await appendOutcome(ctx, `— ${escapeHtml(status)}`);
+        return;
+      }
+      if (isAppError(error, 'FORBIDDEN')) {
+        await ctx.answerCallbackQuery({ text: t('quick_action.not_producer'), show_alert: true });
+        return;
+      }
+      if (isAppError(error, 'NOT_APPROVED') || isAppError(error, 'SUSPENDED')) {
+        await ctx.answerCallbackQuery({ text: error.body(actor.language).error.message });
+        return;
+      }
+      if (isAppError(error, 'NOT_FOUND')) {
+        await ctx.answerCallbackQuery({ text: t('quick_action.reservation_not_found') });
+        await stripButtons(ctx);
+        return;
+      }
+      throw error;
+    }
+  }
 
   /**
    * PRD US-3.4 / N10: *Yes, still available* resets the nudge counter; *Withdraw* hides the

@@ -11,6 +11,7 @@
   import Gate from './routes/Gate.svelte';
   import OfferDetail from './routes/OfferDetail.svelte';
   import Offers from './routes/Offers.svelte';
+  import ReservationDetail from './routes/ReservationDetail.svelte';
   import Reservations from './routes/Reservations.svelte';
   import Settings from './routes/Settings.svelte';
   import AdminCatalog from './routes/admin/Catalog.svelte';
@@ -26,6 +27,7 @@
     '/offers': Offers,
     '/offers/:id': OfferDetail,
     '/reservations': Reservations,
+    '/reservations/:id': ReservationDetail,
     '/settings': Settings,
     ...(meStore.isAdmin ? { '/admin/members': AdminMembers, '/admin/catalog': AdminCatalog } : {}),
     '*': Board,

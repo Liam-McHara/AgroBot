@@ -5,7 +5,7 @@ import type { NotificationKind, UnitCode } from '@agrobot/shared';
  * the same kind reads it back; both sides type against this file so a renamed field cannot
  * silently blank a message.
  *
- * Only the kinds implemented so far are typed; the rest are added milestone by milestone.
+ * Only the kinds implemented so far are typed; N9 arrives with M5.
  */
 export interface NewApplicantPayload {
   applicantId: string;
@@ -47,12 +47,47 @@ export interface OfferWithdrawnPayload extends OfferProductPayload {
   reservations: Array<{ requesterName: string; quantity: number }>;
 }
 
+/** PRD N6–N8: the reservation as it stood when the row was written (PRD §8). */
+export interface ReservationPayload extends OfferProductPayload {
+  reservationId: string;
+  offerId: string;
+  quantity: number;
+  /** The price snapshot; `null` while the product's price is pending (US-2.2). */
+  unitPriceCents: number | null;
+  requesterName: string;
+  producerName: string;
+}
+
+/** PRD N7: the reservation is about to expire; when. */
+export interface ReservationExpiringPayload extends ReservationPayload {
+  expiresAt: string;
+}
+
+export type ReservationDecision = 'confirmed' | 'rejected' | 'cancelled' | 'delivered' | 'expired';
+
+/**
+ * PRD N8: the reservation changed state. `recipient` says which side reads it, so the text can
+ * say "your reservation" to one and "the request" to the other; `actorName` is `null` when a
+ * job or an admin's catalogue decision did it, and `cause` says which. ADR-0014: a delivered
+ * row may come straight from `pending`, so nothing here assumes a previous status.
+ */
+export interface ReservationClosedPayload extends ReservationPayload {
+  decision: ReservationDecision;
+  recipient: 'requester' | 'producer';
+  actorName: string | null;
+  reason: string | null;
+  cause: 'product_rejected' | null;
+}
+
 export interface NotificationPayloads {
   N1: NewApplicantPayload;
   N2: MembershipDecidedPayload;
   N3: NewOfferPayload;
   N4: { productId: string; name: string };
   N5: { productId: string; name: string; decision: 'resolved' | 'rejected' };
+  N6: ReservationPayload;
+  N7: ReservationExpiringPayload;
+  N8: ReservationClosedPayload;
   N10: OfferNudgePayload;
   N11: OfferWithdrawnPayload;
   N12: { syncId: string };

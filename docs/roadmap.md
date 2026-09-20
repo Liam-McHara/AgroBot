@@ -298,26 +298,31 @@ deliver, cancel, reject or expire, with both parties informed.
 **Spec.** PRD §8 US-4.1–4.6, N6–N8 · ARCH §5 (reservations), §6 reservation machine, §9, §11 · ADR-0004, 0014.
 
 **Tasks**
-- [ ] `domain/reservations`: create with `SELECT … FOR UPDATE` on the offer, availability check,
-      price snapshot, `expires_at`; confirm/reject/cancel/deliver with actor guards; deliver
-      deducts from offer; price-resolve hook wired from catalogue sync; unit tests for every
-      guard in the ARCH §6 table.
-- [ ] Concurrency integration test: N parallel reservations for the last unit, exactly one wins,
-      others get `INSUFFICIENT_AVAILABILITY {available}`.
-- [ ] Jobs `reservations.remind` and `reservations.expire` as deadline jobs: the hub's next
+- [x] `domain/reservations`: create with `SELECT … FOR UPDATE` on the offer (then `held` read in
+      a second statement), availability check, price snapshot, `expires_at`;
+      confirm/reject/cancel/deliver with actor guards; deliver deducts from offer; price-resolve
+      hook wired from catalogue sync; unit tests for every guard in the ARCH §6 table.
+- [x] Concurrency integration test: N parallel reservations for the last unit, exactly one wins,
+      others get `INSUFFICIENT_AVAILABILITY {available}` (through the domain and through the API).
+- [x] Jobs `reservations.remind` and `reservations.expire` as deadline jobs: the hub's next
       `due_at` comes from `min(expires_at − reminder)` / `min(expires_at)`, and every
-      reservation transaction ends with `hub.wake()`; N7, N8; tests with fake clock.
-- [ ] Quick actions `confirm:<id>` / `reject:<id>` from N6/N7 with stale-button handling.
-- [ ] `confirm-and-deliver` (producer, pending, one transaction, both system lines, one N8) in the
-      domain and as a Mini App action only — never a quick action (ADR-0014).
-- [ ] System messages on every transition (thread table exists; rendering comes in M5).
-- [ ] API: `POST /reservations`, list by side/state, detail, four action endpoints; realtime
-      event `reservation.changed`.
-- [ ] Mini App: reserve form in offer detail (quantity with unit step, total preview or "price
+      reservation transaction ends with `hub.wake()`, which now makes every deadline job due;
+      N7, N8; tests with fake clock, including a 1-minute expiry.
+- [x] Quick actions `confirm:<id>` / `refuse:<id>` from N6/N7 with stale-button handling
+      (`refuse`, because `reject:<id>` is the applicant's; ARCH §4).
+- [x] `confirm-and-deliver` (producer, pending, one transaction, both system lines, one N8) in the
+      domain and as a Mini App action only — never a quick action (ADR-0014);
+      `POST /reservations/:id/confirm-and-deliver`.
+- [x] System messages on every transition (thread table exists; rendering comes in M5): the
+      body is the event, `meta` names the actor or the cause.
+- [x] API: `POST /reservations`, list by side/state, detail, five action endpoints; realtime
+      event `reservation.changed` to both parties, `board.changed` when availability moved.
+- [x] Mini App: reserve form in offer detail (quantity with unit step, total preview or "price
       pending", conflict handling "only 2 kg left, reserve that?"), Reservations screen
       (incoming/outgoing × active/closed), reservation detail with actions per role and
       state, deep link `r_<id>` (lands on detail until M5 adds the thread).
-- [ ] Held/available shown in My offers; `OFFER_QUANTITY_BELOW_HELD` surfaced in edit form.
+- [x] Held/available shown in My offers; `OFFER_QUANTITY_BELOW_HELD` surfaced in edit form (the
+      M3 screens, now fed by real holds; covered by the API test).
 
 **Definition of done**
 - E2E: requester reserves → producer sees N6 and confirms from the quick action → requester
@@ -327,6 +332,30 @@ deliver, cancel, reject or expire, with both parties informed.
 - Pending reservation with a 1-minute expiry (test setting) gets reminded and expired by the
   jobs, quantity released, both notified.
 - Withdrawing an offer with open reservations keeps them actionable and sends N11.
+
+**Verified in M4:** the two e2e flows run against `wrangler dev` with the fake Bot API: the
+quick action is a real `callback_query` posted to the webhook, the requester's screen moves on
+`reservation.changed`, the delivery deducts from *My offers*, and the one-tap handover leaves
+both timestamps and a single delivered notification. The 1-minute expiry, the reminder window,
+the release and the N8 pair are an integration test with a fake clock
+(`test/reservations-jobs.test.ts`); withdrawal with open reservations, the catalogue cascade and
+a five-way race for the last unit are in `test/reservations.test.ts`, and a six-way race through
+the routes in `test/reservations-api.test.ts`. `pnpm lint`, `pnpm typecheck`, `pnpm test` and
+`pnpm build` pass; `pnpm e2e` passes membership, catalogue, offers, realtime and reservations.
+
+**Spec corrections made in this milestone:** the reservation's *Reject* quick action is
+`refuse:<id>` on the wire, since `reject:<id>` already names the applicant's decision and an id
+alone does not say which table it belongs to (ARCH §4); `confirm-and-deliver` is a fifth action
+endpoint rather than a flag on `/deliver` (ARCH §6, §11); the offer row is locked before `held`
+is read, in two statements, so the availability check sees reservations committed while the
+lock was awaited, and the offers service's held floor now does the same (ARCH §6);
+`hub.wake()` makes every deadline job due, not only the dispatcher, so one wake covers a
+notification and a deadline written in the same commit (ARCH §9); row locks go reservation
+first, then offer (ARCH §6); a rejected proposal's open reservations are cancelled with N8 to
+both parties and N5 goes to the proposer and the producers, rather than N5 to the requesters
+(PRD US-2.2, §9; ARCH §10); anyone who is not a party gets `FORBIDDEN` and a stale action gets
+`INVALID_TRANSITION` with the current status, while reserving a withdrawn, expired or suspended
+producer's offer is also `INVALID_TRANSITION` and reserving one's own is `FORBIDDEN` (ARCH §11).
 
 ---
 

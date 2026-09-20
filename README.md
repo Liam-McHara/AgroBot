@@ -17,9 +17,14 @@ products and publish, edit and withdraw offers on them, everyone sees the board 
 a WebSocket held by one Durable Object
 ([ADR-0016](docs/adr/0016-hosting-on-cloudflare-workers-and-neon.md),
 [ADR-0017](docs/adr/0017-durable-object-for-jobs-and-realtime.md)), the group is told of new
-offers, and the hub's daily jobs expire dated offers and ask about idle ones. Every screen speaks
-Catalan and Spanish. What M2.5 still needs is a **first deploy to the staging Worker**, which
-takes a Cloudflare and a Neon account ([first-time setup](#first-time-setup) below); then M4 in
+offers, and the hub's daily jobs expire dated offers and ask about idle ones. Members reserve
+part of an offer, which holds the quantity at once; producers confirm or reject from the
+Telegram notification or the app, either side marks the handover delivered (which deducts from
+the offer), and pending reservations are reminded and expired by the hub on their own deadlines
+([ADR-0004](docs/adr/0004-reservation-lifecycle.md),
+[ADR-0014](docs/adr/0014-confirm-and-deliver-shortcut.md)). Every screen speaks Catalan and
+Spanish. What M2.5 still needs is a **first deploy to the staging Worker**, which takes a
+Cloudflare and a Neon account ([first-time setup](#first-time-setup) below); then M5 in
 [docs/roadmap.md](docs/roadmap.md). The 1.0 prototype is frozen under [`legacy/`](legacy/README.md).
 
 | Document | Purpose |
@@ -105,7 +110,10 @@ sync and app version. The admin screen shows row errors and unit-change warnings
 or zero valid rows preserve the existing catalogue and queue N12. Members search and
 propose products from the picker under **My offers** when they publish an offer (M3); the
 board shows everyone else's offers live, and the hub's daily jobs expire dated offers and ask
-about idle ones.
+about idle ones. Reserving from the board holds the quantity (M4): the producer gets *Confirm*
+· *Reject* · *Open* in Telegram, **Reservations** lists incoming and outgoing ones, and the
+reservation screen carries the actions each side may take, including the producer's one-tap
+*confirm and mark delivered* for a handover that already happened.
 
 To check the full M2 scenario without a Google account:
 

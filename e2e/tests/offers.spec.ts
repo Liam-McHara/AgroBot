@@ -80,10 +80,11 @@ test('an offer reaches the board live, notifies the group, and leaves when nothi
       sent.filter((m) => String(m.chat_id) === IDS.producer && m.text.includes('ofereix')),
     ).toHaveLength(0);
 
-    // The detail sheet: reserving waits for M4, visibly.
+    // The detail sheet carries the reserve form (M4); reserving itself is reservations.spec.
     await row.click();
     const sheet = requester.getByRole('dialog');
     await expect(sheet.getByTestId('reserve')).toBeDisabled();
+    await expect(sheet.getByLabel('Quantitat a reservar (kg)')).toBeVisible();
     await sheet.getByRole('button', { name: 'Tanca' }).click();
     await expect(requester.getByRole('dialog')).toHaveCount(0);
 

@@ -177,8 +177,8 @@ wait for an admin before publishing surplus.
   product is a conflict (including another member's pending proposal).
 - On the next sync, a sheet row whose normalized name equals the pending product's name
   resolves it (status active, price set). An admin can also **rename** a pending product to
-  match a sheet row, or **reject** it (offers on it are withdrawn, their reservations
-  cancelled, everybody involved notified). Renaming to an existing active sheet product
+  match a sheet row, or **reject** it (offers on it are withdrawn, their open reservations
+  cancelled with N8 to both parties, the proposer and the producers told with N5). Renaming to an existing active sheet product
   resolves the proposal into that product and archives the original proposal (ADR-0015).
   A name belonging to another pending or archived
   product is a conflict. Renaming to a new name stays pending until the next matching sync.
@@ -305,7 +305,7 @@ opens the relevant screen of the Mini App.
 | N2 | Approved / rejected | applicant | Open AgroBot (on approval) |
 | N3 | New offer published or re-published | all members except the producer (if `notify_new_offer`) | Open offer |
 | N4 | Product proposed | all admins | Open pending products |
-| N5 | Product resolved / rejected | proposer, plus requesters of open reservations on it | Open |
+| N5 | Product resolved / rejected | proposer, plus requesters of open reservations on resolution and producers of withdrawn offers on rejection (the cancelled reservations' parties get N8 instead) | Open |
 | N6 | Reservation created | producer | Confirm · Reject · Open |
 | N7 | Reservation about to expire | producer | Confirm · Reject · Open |
 | N8 | Reservation confirmed / rejected / cancelled / delivered / expired | the other party (both on expiry) | Open |

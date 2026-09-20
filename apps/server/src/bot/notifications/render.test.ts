@@ -172,3 +172,139 @@ describe('offer notifications (N3, N10, N11)', () => {
     });
   });
 });
+
+describe('reservation notifications (N6, N7, N8)', () => {
+  const reservationId = '33333333-3333-4333-8333-333333333333';
+  const offerId = '22222222-2222-4222-8222-222222222222';
+  const base = {
+    reservationId,
+    offerId,
+    productName: 'Ous <frescos>',
+    productNameEs: 'Huevos',
+    unitCode: 'dozen' as const,
+    quantity: 2,
+    unitPriceCents: 310,
+    requesterName: 'Jordi & Co',
+    producerName: 'Marta',
+  };
+  const open = `https://t.me/AgroBotTest/app?startapp=r_${reservationId}`;
+  /** Intl puts a no-break space before the currency sign. */
+  const TOTAL = '6,20\u00a0€ en total';
+
+  it('N6 tells the producer who wants what, with the total, and offers Confirm · Reject · Open', () => {
+    const rendered = renderNotification(env, 'N6', base, 'ca');
+    expect(rendered.text).toBe(
+      `🤝 Jordi &amp; Co vol reservar 2 dotzena de Ous &lt;frescos&gt; (${TOTAL}). Ho confirmes?`,
+    );
+    const rows = rendered.replyMarkup!.inline_keyboard;
+    expect(rows[0]!.map((b) => 'callback_data' in b && b.callback_data)).toEqual([
+      `confirm:${reservationId}`,
+      `refuse:${reservationId}`,
+    ]);
+    expect(rows[0]!.map((b) => b.text)).toEqual(['✅ Confirma', '❌ Rebutja']);
+    expect(rows[1]![0]).toMatchObject({ text: 'Obre la reserva', url: open });
+  });
+
+  it('N6 says "price pending" instead of a total while the product has no price (US-2.2)', () => {
+    const rendered = renderNotification(env, 'N6', { ...base, unitPriceCents: null }, 'es');
+    expect(rendered.text).toBe(
+      '🤝 Jordi &amp; Co quiere reservar 2 docena de Huevos (Precio pendiente). ¿Lo confirmas?',
+    );
+  });
+
+  it('N7 names the deadline on the farm clock and keeps the same quick actions', () => {
+    const rendered = renderNotification(
+      env,
+      'N7',
+      { ...base, expiresAt: '2026-09-21T10:00:00.000Z' },
+      'ca',
+    );
+    expect(rendered.text).toMatch(/caduca el 21\/09\/2026,? 12:00 si no respons/);
+    expect(rendered.text).toContain(`2 dotzena de Ous &lt;frescos&gt;, ${TOTAL}`);
+    expect(rendered.replyMarkup!.inline_keyboard[0]!.map((b) => b.text)).toEqual([
+      '✅ Confirma',
+      '❌ Rebutja',
+    ]);
+  });
+
+  it.each([
+    [
+      'confirmed',
+      'requester',
+      '✅ Marta ha confirmat la teva reserva de 2 dotzena de Ous &lt;frescos&gt; (6,20\u00a0€ en total).',
+    ],
+    [
+      'rejected',
+      'requester',
+      '❌ Marta ha rebutjat la teva reserva de 2 dotzena de Ous &lt;frescos&gt;.\nMotiu: massa &lt;tard&gt;',
+    ],
+    [
+      'cancelled',
+      'producer',
+      '🚫 Jordi &amp; Co ha cancel·lat la reserva de 2 dotzena de Ous &lt;frescos&gt;.\nMotiu: massa &lt;tard&gt;',
+    ],
+    [
+      'delivered',
+      'requester',
+      '📦 Marta ha marcat com a lliurada la reserva de 2 dotzena de Ous &lt;frescos&gt; (6,20\u00a0€ en total).',
+    ],
+  ] as const)(
+    'N8 %s reads from the %s side with the actor and an escaped reason',
+    (decision, recipient, text) => {
+      const actorName = recipient === 'requester' ? 'Marta' : 'Jordi & Co';
+      const rendered = renderNotification(
+        env,
+        'N8',
+        {
+          ...base,
+          decision,
+          recipient,
+          actorName,
+          reason: decision === 'rejected' || decision === 'cancelled' ? 'massa <tard>' : null,
+          cause: null,
+        },
+        'ca',
+      );
+      expect(rendered.text).toBe(text);
+      expect(rendered.replyMarkup!.inline_keyboard[0]![0]).toMatchObject({
+        text: 'Obre la reserva',
+        url: open,
+      });
+    },
+  );
+
+  it('N8 expired speaks to each side about the other (PRD US-4.5)', () => {
+    const expired = {
+      ...base,
+      decision: 'expired' as const,
+      actorName: null,
+      reason: null,
+      cause: null,
+    };
+    expect(renderNotification(env, 'N8', { ...expired, recipient: 'requester' }, 'ca').text).toBe(
+      '⌛ La teva reserva de 2 dotzena de Ous &lt;frescos&gt; a Marta ha caducat sense resposta. La quantitat torna a estar disponible al tauler.',
+    );
+    expect(renderNotification(env, 'N8', { ...expired, recipient: 'producer' }, 'es').text).toBe(
+      '⌛ La reserva de Jordi &amp; Co de 2 docena de Huevos ha caducado sin respuesta. La cantidad vuelve al tablón.',
+    );
+  });
+
+  it('N8 cancelled by a catalogue rejection names the cause, not an actor (ADR-0018)', () => {
+    const rendered = renderNotification(
+      env,
+      'N8',
+      {
+        ...base,
+        decision: 'cancelled',
+        recipient: 'producer',
+        actorName: null,
+        reason: null,
+        cause: 'product_rejected',
+      },
+      'es',
+    );
+    expect(rendered.text).toBe(
+      '🚫 Se ha cancelado la reserva de 2 docena de Huevos: los administradores han rechazado este producto.',
+    );
+  });
+});
