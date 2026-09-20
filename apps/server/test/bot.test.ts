@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { InlineKeyboardMarkup, Update, UserFromGetMe } from 'grammy/types';
 import { eq } from 'drizzle-orm';
-import { members, notifications, offers, products } from '../src/db/schema/index.js';
+import { members, notifications, offers, products, reservations } from '../src/db/schema/index.js';
 import { createBot } from '../src/bot/index.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
 import { testDeps } from './helpers/app.js';
@@ -392,6 +392,80 @@ suite('bot', () => {
         callbackUpdate(ADMIN, 'withdraw:00000000-0000-4000-8000-000000000000'),
       );
       expect(last('answerCallbackQuery')?.payload['text']).toBe('No trobo aquesta oferta.');
+    });
+  });
+
+  describe('quick actions confirm:<reservationId> / refuse:<reservationId> (PRD US-4.2, N6)', () => {
+    /** The admin publishes; Marta (approved here) reserves; the callback comes from the tapper. */
+    async function pendingReservation() {
+      const { bot, deps, last, sent } = botUnderTest();
+      await bot.handleUpdate(start(ADMIN));
+      await bot.handleUpdate(start(MARTA));
+      const admin = (await memberByTelegramId(ADMIN_ID))!;
+      await deps.members.approve(admin, (await memberByTelegramId(MARTA.id))!.id);
+      const marta = (await memberByTelegramId(MARTA.id))!;
+      const [product] = await database!.db
+        .insert(products)
+        .values({ slug: 'ous', name: 'Ous', nameEs: 'Huevos', unitCode: 'dozen', priceCents: 300 })
+        .returning();
+      const { offer } = await deps.offers.publish(admin, { productId: product!.id, quantity: 4 });
+      const { reservation } = await deps.reservations.create(marta, {
+        offerId: offer.id,
+        quantity: 2,
+      });
+      return { bot, deps, last, sent, admin, marta, reservation };
+    }
+
+    it('confirm moves the reservation on, answers the producer and marks the message', async () => {
+      const { bot, last, reservation } = await pendingReservation();
+      await bot.handleUpdate(
+        callbackUpdate(ADMIN, `confirm:${reservation.id}`, 'Marta Puig vol reservar 2 dotzena'),
+      );
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        'Reserva confirmada. Ho hem avisat a Marta Puig.',
+      );
+      expect(last('editMessageText')?.payload['text']).toBe(
+        'Marta Puig vol reservar 2 dotzena\n\n✅ Confirmada',
+      );
+      const [row] = await database!.db
+        .select()
+        .from(reservations)
+        .where(eq(reservations.id, reservation.id));
+      expect(row).toMatchObject({ status: 'confirmed', expiresAt: null });
+      // The requester's N8 is in the outbox, and the hub was woken for it.
+      const n8 = await database!.db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.kind, 'N8'));
+      expect(n8).toMatchObject([{ payload: { decision: 'confirmed', recipient: 'requester' } }]);
+    });
+
+    it('refuse rejects it, and a stale tap afterwards is explained with the current status', async () => {
+      const { bot, last, reservation } = await pendingReservation();
+      await bot.handleUpdate(callbackUpdate(ADMIN, `refuse:${reservation.id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        'Reserva rebutjada. Ho hem avisat a Marta Puig.',
+      );
+      expect(last('editMessageText')?.payload['text']).toContain('❌ Rebutjada');
+      expect((await database!.db.select().from(reservations))[0]?.status).toBe('rejected');
+
+      await bot.handleUpdate(callbackUpdate(ADMIN, `confirm:${reservation.id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        'Aquesta reserva ja està rebutjada.',
+      );
+      expect(last('editMessageText')?.payload['text']).toContain('— rebutjada');
+    });
+
+    it('refuses the requester’s tap on the producer’s buttons, and answers a missing reservation', async () => {
+      const { bot, last, reservation } = await pendingReservation();
+      await bot.handleUpdate(callbackUpdate(MARTA, `confirm:${reservation.id}`));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe(
+        "Només qui ha publicat l'oferta pot fer això.",
+      );
+      expect((await database!.db.select().from(reservations))[0]?.status).toBe('pending');
+      await bot.handleUpdate(callbackUpdate(ADMIN, 'confirm:00000000-0000-4000-8000-000000000000'));
+      expect(last('answerCallbackQuery')?.payload['text']).toBe('No trobo aquesta reserva.');
+      expect(last('editMessageReplyMarkup')).toBeTruthy();
     });
   });
 });

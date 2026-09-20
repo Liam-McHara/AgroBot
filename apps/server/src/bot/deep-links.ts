@@ -17,9 +17,18 @@ export function miniAppLink(
 
 /**
  * Quick-action `callback_data` (≤ 64 bytes): `<action>:<entityId>`. `approve`/`reject` act on
- * an applicant (N1); `still`/`withdraw` on an offer (N10).
+ * an applicant (N1); `still`/`withdraw` on an offer (N10); `confirm`/`refuse` on a reservation
+ * (N6, N7). The reservation's *Reject* is `refuse` on the wire because `reject` already names
+ * the applicant's, and the id alone does not say which table it belongs to.
  */
-export const QUICK_ACTIONS = ['approve', 'reject', 'still', 'withdraw'] as const;
+export const QUICK_ACTIONS = [
+  'approve',
+  'reject',
+  'still',
+  'withdraw',
+  'confirm',
+  'refuse',
+] as const;
 export type QuickAction = (typeof QUICK_ACTIONS)[number];
 
 export function quickActionData(action: QuickAction, entityId: string): string {
