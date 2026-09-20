@@ -138,9 +138,11 @@ it is unit-testable.
 - Webhook URL `POST /telegram/webhook`, registered by `pnpm bot:set-webhook`
   (`scripts/set-webhook.mjs`, idempotent; run by the deploy workflow and by hand for tunnels)
   with `secret_token = TELEGRAM_WEBHOOK_SECRET`; grammY checks the header on every update.
-- Quick-action callbacks carry `action:entityId` in `callback_data` (≤ 64 bytes); handlers
-  resolve the member from `from.id` and call the same domain service the API would call, so
-  permission checks are shared.
+- Quick-action callbacks carry `action:entityId` in `callback_data` (≤ 64 bytes):
+  `approve`/`reject:<memberId>` (N1), `still`/`withdraw:<offerId>` (N10),
+  `confirm`/`refuse:<reservationId>` (N6, N7; the reservation's *Reject* is `refuse` on the wire
+  because `reject` already names the applicant's). Handlers resolve the member from `from.id`
+  and call the same domain service the API would call, so permission checks are shared.
 
 ### Deep links
 - Notification buttons open `https://t.me/<BOT_USERNAME>/<MINIAPP_SHORT_NAME>?startapp=<param>`.
@@ -238,15 +240,22 @@ from the two-step path.
 
 | Transition | Actor | Guard | Side effects |
 |---|---|---|---|
-| create | requester | offer reservable, quantity ≤ available (row lock), requester ≠ producer | snapshot price, `expires_at`, N6, system line "reserved", realtime `reservation.changed` + `board.changed` |
+| create | requester | offer reservable, quantity ≤ available (offer row locked first, `held` read in a second statement so it sees every reservation committed meanwhile), requester ≠ producer | snapshot price, `expires_at`, N6, system line "created", realtime `reservation.changed` + `board.changed`, `hub.wake()` for the deadline |
 | confirm | producer | pending | clear `expires_at`, N8, system line |
 | reject | producer | pending | reason, N8, release, system line |
 | cancel | requester (pending/confirmed), producer (confirmed) | | reason, `closed_by`, N8, release, system line |
 | deliver | either | confirmed | deduct from offer, N8, system line |
-| confirm-and-deliver | producer, Mini App only | pending | one transaction: the `confirm` then the `deliver` side effects, both system lines, a **single** N8 (`delivered`). Not offered as a bot quick action. |
+| confirm-and-deliver | producer, Mini App only | pending | one transaction: the `confirm` then the `deliver` side effects, both system lines, a **single** N8 (`delivered`). `POST /reservations/:id/confirm-and-deliver`; not offered as a bot quick action. |
 | remind | job | pending, `reminded_at IS NULL`, now ≥ `expires_at − reminder` | N7, set `reminded_at` |
 | expire | job | pending, now ≥ `expires_at` | N8 to both, release, system line |
-| price-resolve | catalog sync | `unit_price_cents IS NULL`, product resolved, status active | set snapshot, N5 |
+| price-resolve | catalog sync | `unit_price_cents IS NULL`, product resolved, status pending or confirmed | set snapshot, N5 to the requester |
+| cancel by catalogue | admin rejects the pending product | pending or confirmed | `closed_by` the admin, no reason, system line with `cause: product_rejected`, N8 to both parties, release; reservations are locked before the product's offers are withdrawn |
+
+Row locks are taken in one order everywhere: the reservation first, then its offer
+(`deliver` deducts, the catalogue cascade cancels then withdraws), and `create` locks only the
+offer, so the paths cannot deadlock. Anyone who is not a party gets `FORBIDDEN` from every
+reservation call; a party asking for an action the status no longer allows gets
+`INVALID_TRANSITION` with the current status, which is what a stale quick action answers with.
 
 ### Offer
 
@@ -347,7 +356,9 @@ Rules:
 - Deadline jobs read their next `due_at` from Postgres only during a run, while the database is
   already awake, and the Worker calls `hub.wake()` after any transaction that creates or moves
   a deadline (a new reservation, a confirmed one, an enqueued notification), so the alarm is
-  never later than the work.
+  never later than the work. `wake()` makes every deadline job due now (the dispatcher, the
+  reminder, the expiry): each runs within a second, does what is due, and stores when it is
+  next due, so one wake covers a notification and a deadline written in the same commit.
 - **Nothing polls Postgres on a timer.** A five-minute sweep would keep Neon awake all month
   (ADR-0016). A Cron Trigger every 15 minutes calls `hub.ensureArmed()`, which reads only the
   hub's own storage and re-arms the alarm if it is missing; it is a liveness check, not a
@@ -386,8 +397,10 @@ fetchRows()  ──►  normalizeHeaders()  ──►  parseRow() ×N  ──►
 - The lifecycle hooks (`domain/catalog/lifecycle.ts`) run inside the catalogue transaction:
   merge moves the proposal's offers to the sheet product and refuses a producer who would end
   up with two active offers on it (ADR-0015); reject withdraws the proposal's offers and
-  archives or deletes it (ADR-0018). M4 adds the reservation side: price snapshots on
-  resolution, cancellations on rejection.
+  archives or deletes it (ADR-0018). The reservation side (`domain/reservations/cascade.ts`)
+  fills the empty price snapshots of open reservations on resolution and, on rejection,
+  cancels the open reservations before the offers are withdrawn, with N8 to both parties of
+  each (`cause: product_rejected`); N5 goes to the proposer and the producers.
 - Zero valid rows → `failed`, nothing applied, N12 to admins.
 - Sheets mode: `GOOGLE_SERVICE_ACCOUNT_JSON` (base64 of the key file), `GOOGLE_SHEET_ID`,
   `GOOGLE_SHEET_RANGE` (default `Productes!A:E`). The sheet must be shared read-only with the
@@ -415,10 +428,10 @@ All under `/api`, JSON, auth as §4. Contracts are zod schemas in
 | `POST /offers/:id/withdraw` | producer | |
 | `POST /offers/:id/still-available` | producer | Reset nudge counter. |
 | `GET /offers/:id` | member | Detail (for deep links). |
-| `POST /reservations` | member | `{offerId, quantity}`; 409 `INSUFFICIENT_AVAILABILITY {available}`. |
-| `GET /reservations?side=incoming\|outgoing&state=active\|closed` | member | |
+| `POST /reservations` | member | `{offerId, quantity}`; 409 `INSUFFICIENT_AVAILABILITY {available}`; 403 for my own offer; 422 `INVALID_TRANSITION` for a withdrawn, expired or suspended producer's offer. |
+| `GET /reservations?side=incoming\|outgoing&state=active\|closed` | member | `state` defaults to `active`; `closed` covers the last 30 days by `closed_at`. |
 | `GET /reservations/:id` | party | Reservation + offer + product + counterpart summary. |
-| `POST /reservations/:id/confirm` · `/reject` · `/cancel` · `/deliver` | party (per §6) | `{reason?}` for reject/cancel. |
+| `POST /reservations/:id/confirm` · `/reject` · `/cancel` · `/deliver` · `/confirm-and-deliver` | party (per §6) | `{reason?}` for reject/cancel (an empty body is fine); the last one is the Mini App's one-tap handover (ADR-0014). All answer the reservation with its offer and the caller's allowed actions. |
 | `GET /reservations/:id/messages?after=<id>` | party | Paginated thread. |
 | `POST /reservations/:id/messages` | party | `{body}`. 403 `THREAD_READONLY` when closed too long. |
 | `POST /reservations/:id/read` | party | Mark read up to latest. |
