@@ -479,6 +479,8 @@ suite('reservations: real Postgres (PRD §8, ARCH §6)', () => {
     it('withdrawing an offer with open reservations sends N11 and keeps them actionable (US-3.2)', async () => {
       const offer = await publish(marta, 6);
       const a = await deps.reservations.create(jordi, { offerId: offer.id, quantity: 2 });
+      // A minute later, so the N11 list (ordered by creation) is deterministic under the fake clock.
+      clock.now = new Date(NOW.getTime() + 60_000);
       const b = await deps.reservations.create(pere, { offerId: offer.id, quantity: 1 });
       await deps.offers.withdraw(marta, offer.id);
       expect(await queued('N11')).toMatchObject([
