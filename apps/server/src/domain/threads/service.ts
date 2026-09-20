@@ -270,7 +270,7 @@ export function createThreadsService(deps: ThreadsDeps) {
   async function list(
     actor: Member,
     reservationId: string,
-    query: MessagesQuery,
+    query: Partial<MessagesQuery> = {},
   ): Promise<ThreadPage> {
     const parsed = messagesQuerySchema.safeParse(query);
     if (!parsed.success) throw validationFailed(parsed.error.flatten());
