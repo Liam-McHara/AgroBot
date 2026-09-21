@@ -183,7 +183,7 @@ CLIs logged in. Nothing here changes a file in the repository.
    | Kind | Names |
    |---|---|
    | Variables | `WORKER_NAME` (default `agrobot`), `HYPERDRIVE_ID`, `PLACEMENT_REGION` (default `aws:eu-central-1`), `PUBLIC_URL` (`https://<WORKER_NAME>.<account>.workers.dev`), `BOT_USERNAME`, `MINIAPP_SHORT_NAME` (default `app`), `ADMIN_TELEGRAM_IDS`, `CATALOG_SOURCE` and its `GOOGLE_SHEET_ID` / `GOOGLE_SHEET_RANGE` or `CATALOG_CSV_URL`, `DEFAULT_LOCALE`, `LOG_LEVEL` |
-   | Secrets | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL` (the direct Neon string), `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON` (sheets mode), `SENTRY_DSN` (optional) |
+   | Secrets | `CLOUDFLARE_API_TOKEN`, `DATABASE_URL` (the direct Neon string), `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON` (sheets mode), `SENTRY_DSN` (optional) |
 
    Staging uses a throwaway bot; production uses 1.0's token (ADR-0013).
 4. **Deploy.** Push to `staging` (or `main`): the workflow runs the checks, applies the

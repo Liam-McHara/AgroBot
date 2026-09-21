@@ -57,7 +57,6 @@ const hyperdriveId = required(
 const placementRegion = value('PLACEMENT_REGION');
 if (!dryRun) {
   required('CLOUDFLARE_API_TOKEN');
-  required('CLOUDFLARE_ACCOUNT_ID');
 }
 
 // ── Worker vars (ARCH §13): plain values, visible in the dashboard ──────────────────────

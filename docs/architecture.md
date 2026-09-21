@@ -577,7 +577,7 @@ pnpm dev                        # wrangler dev (Worker + hub, :8080) + miniapp (
   Environment named after the branch: `main` → `production`, `staging` → `staging`):
   1. `pnpm db:migrate` against Neon (`DATABASE_URL` environment secret, the direct string;
      forward-only).
-  2. `pnpm deploy:worker` (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and the variables of
+  2. `pnpm deploy:worker` (`CLOUDFLARE_API_TOKEN` and the variables of
      §13): generates `wrangler.deploy.jsonc`, `wrangler deploy`, then `wrangler secret bulk`
      for `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `SENTRY_DSN`. A
      deploy never removes a secret; the few seconds between the two uploads are the only time
