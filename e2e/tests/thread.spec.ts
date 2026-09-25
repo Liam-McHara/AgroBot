@@ -9,7 +9,7 @@ import { E2E_PORT, E2E_TELEGRAM_URL, IDS } from '../playwright.config.js';
  * messages that appear on the other side without a reload; when one party has closed the app,
  * three messages earn it exactly one N9 (fake Telegram); coming back, the Reservations tab and
  * the row carry the count, and opening the thread clears it. Along the way a transition from
- * the header shows up as a system line on the other side. Runs last (alphabetically), on the
+ * the header shows up as a system line on the other side. Runs after reservations, on the
  * offer and the catalogue the earlier specs leave behind, and publishes its own offer when
  * there is none.
  */
@@ -43,7 +43,8 @@ const chatPings = async (request: APIRequestContext, telegramId: string) => {
 };
 
 async function send(page: Page, text: string): Promise<void> {
-  await page.getByLabel('Missatge').fill(text);
+  // An unread badge can also contain "missatge" while the read marker catches up.
+  await page.getByRole('textbox', { name: 'Missatge', exact: true }).fill(text);
   await page.getByTestId('send').click();
   // Acknowledged: the pending bubble was replaced by the server's copy.
   await expect(

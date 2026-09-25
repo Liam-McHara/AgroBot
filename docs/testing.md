@@ -23,7 +23,8 @@ traces contain test identities only, never production initData or tokens.
 When a test flakes:
 
 1. Keep its first failure and trace. Record the commit, failing assertion, runtime version and
-   reproduction in a GitHub issue. Inspect with `pnpm exec playwright show-trace <trace.zip>`.
+   reproduction in a GitHub issue (or the PR when fixed immediately). Inspect with
+   `pnpm exec playwright show-trace <trace.zip>`.
 2. Reproduce the whole suite from its fresh database and hub. Distinguish application races
    from test readiness assumptions. Use observable states and Playwright assertions, not sleeps.
 3. Fix the underlying race or readiness check in the same PR with relevant regression coverage.
