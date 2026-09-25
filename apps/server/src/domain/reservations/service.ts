@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import {
   createReservationSchema,
   isQuantityOnStep,
@@ -353,6 +353,7 @@ export function createReservationsService(deps: ReservationsDeps) {
             isNull(reservations.remindedAt),
             isNotNull(reservations.expiresAt),
             lte(reservations.expiresAt, threshold),
+            gt(reservations.expiresAt, at),
           ),
         )
         .for('update', { of: reservations });

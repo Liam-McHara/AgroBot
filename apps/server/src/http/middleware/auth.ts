@@ -5,6 +5,7 @@ import { assertAdmin, assertMember } from '../../domain/members/service.js';
 import type { TelegramIdentity } from '../../domain/members/rules.js';
 import { unauthenticated } from '../errors.js';
 import { verifyInitData } from '../init-data.js';
+import { enforceRateLimit } from './limits.js';
 import type { AppContext, AppDeps } from '../context.js';
 
 /**
@@ -53,6 +54,9 @@ export function authenticate(deps: AppDeps) {
     const { member } = await deps.members.identify(identity);
     c.set('member', member);
     c.set('language', member.language ?? DEFAULT_LANGUAGE);
+    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(c.req.method)) {
+      await enforceRateLimit(c, deps.hub, `member:${member.id}`, 60);
+    }
     await next();
   });
 }

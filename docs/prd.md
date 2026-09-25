@@ -341,6 +341,20 @@ failing silently.
 - Emergency bot commands for admins only: `/sync` (run catalogue sync, reply with result) and
   `/status` (members count, active offers, pending reservations, last sync, app version).
 
+### US-7.1 Configure the group
+**As** an admin **I** edit the six group settings **so that** the group can tune deadlines and
+notifications without a deploy. Settings are saved atomically and record the admin and time.
+
+- Expiry: 1/60–720 hours (fractions allowed, including the one-minute test setting).
+  Reminder: 0–720 hours (fractions allowed); 0 means remind at expiry, so expiry takes priority.
+  A reminder longer than a reservation's remaining lifetime is due immediately.
+- Nudge and stale delay: integer days, 1–365. Chat window: integer days, 0–365; 0 makes closed
+  threads immediately read-only. New-offer notifications accept only a boolean.
+- Expiry changes apply to new reservations; existing `expires_at` timestamps stay fixed.
+  Reminder changes re-arm the hub immediately; offer jobs use current values on their next
+  daily run, chat checks use them on the next request, and publication reads the current flag.
+- Invalid, empty or unknown settings are refused without saving any part of the change.
+
 ## 11. Out of scope for 2.0 (backlog)
 
 Kept in the data model where cheap (price snapshots, timestamps) so they can be added later:

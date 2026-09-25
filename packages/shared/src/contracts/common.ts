@@ -9,6 +9,7 @@ export const errorBodySchema = z.object({
   error: z.object({
     code: z.enum(ERROR_CODES),
     message: z.string(),
+    requestId: z.string().optional(),
     details: z.unknown().optional(),
   }),
 });

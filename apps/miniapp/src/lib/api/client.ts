@@ -1,5 +1,6 @@
 import type { ErrorBody } from '@agrobot/shared';
 import { initTelegram } from '../telegram.js';
+import { t } from '../i18n/index.svelte.js';
 
 /**
  * The fetch wrapper of ARCH §12: it adds the `tma` authorization header and, outside Telegram,
@@ -18,6 +19,7 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly details?: unknown,
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -54,15 +56,22 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   const response = await fetch(`/api${path}`, { ...init, headers });
   const text = await response.text();
-  const payload: unknown = text ? JSON.parse(text) : null;
+  let payload: unknown = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    /* A proxy may return HTML. */
+  }
 
   if (!response.ok) {
     const body = payload as ErrorBody | null;
     throw new ApiError(
       response.status,
-      body?.error.code ?? 'INTERNAL',
-      body?.error.message ?? `HTTP ${response.status}`,
-      body?.error.details,
+      body?.error?.code ?? 'INTERNAL',
+      body?.error?.message ??
+        t('error.INTERNAL', { requestId: response.headers.get('x-request-id') ?? '' }),
+      body?.error?.details,
+      body?.error?.requestId ?? response.headers.get('x-request-id') ?? undefined,
     );
   }
 

@@ -16,6 +16,7 @@
   import Settings from './routes/Settings.svelte';
   import AdminCatalog from './routes/admin/Catalog.svelte';
   import AdminMembers from './routes/admin/Members.svelte';
+  import AdminSettings from './routes/admin/Settings.svelte';
 
   /**
    * ARCH §12: everything redirects to the gate while the member is not approved; approved
@@ -29,7 +30,13 @@
     '/reservations': Reservations,
     '/reservations/:id': ReservationDetail,
     '/settings': Settings,
-    ...(meStore.isAdmin ? { '/admin/members': AdminMembers, '/admin/catalog': AdminCatalog } : {}),
+    ...(meStore.isAdmin
+      ? {
+          '/admin/members': AdminMembers,
+          '/admin/catalog': AdminCatalog,
+          '/admin/settings': AdminSettings,
+        }
+      : {}),
     '*': Board,
   });
 

@@ -44,7 +44,11 @@ export class AppError extends Error {
       error: {
         code: this.code,
         message,
-        ...(this.details === undefined ? {} : { details: this.details }),
+        ...(this.code === 'INTERNAL'
+          ? { requestId: String(extraParams['requestId'] ?? '') }
+          : this.details === undefined
+            ? {}
+            : { details: this.details }),
       },
     };
   }

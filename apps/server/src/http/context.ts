@@ -9,6 +9,7 @@ import type { OffersService } from '../domain/offers/service.js';
 import type { ReservationsService } from '../domain/reservations/service.js';
 import type { ThreadsService } from '../domain/threads/service.js';
 import type { Hub } from '../realtime/port.js';
+import type { ErrorReporter } from '../observability.js';
 
 /**
  * Everything the HTTP layer and the bot are handed at construction time. No singletons: the
@@ -25,6 +26,7 @@ export interface AppDeps {
   readonly threads: ThreadsService;
   /** The one hub (ADR-0017): jobs on demand, socket tickets, and the upgrade hand-off. */
   readonly hub: Hub;
+  readonly reportError?: ErrorReporter;
 }
 
 export interface AppVariables {
@@ -33,6 +35,7 @@ export interface AppVariables {
   /** The language to answer in: the member's if we know them, else Telegram's, else default. */
   language: Language;
   member?: Member;
+  reportError?: ErrorReporter;
 }
 
 export interface AppContext {

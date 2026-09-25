@@ -320,5 +320,19 @@
     "other": "{count, number} mensajes sin leer"
   },
   "notification.N9.text": "💬 {sender} te ha escrito sobre la reserva de {quantity, number, 1} {unit} de {product}:\n«{preview}»",
-  "notification.N9.open": "Abrir la conversación"
+  "notification.N9.open": "Abrir la conversación",
+  "admin.settings.title": "Configuración del grupo",
+  "admin.settings.hint": "Los cambios se aplican sin reiniciar. Se conservan los vencimientos ya asignados.",
+  "admin.settings.reservation_expiry_hours": "Caducidad de las reservas (horas)",
+  "admin.settings.reservation_expiry_hours.hint": "Entre 1 minuto (0,016667 h) y 720 horas. Solo para reservas nuevas.",
+  "admin.settings.reservation_reminder_hours_before_expiry": "Recordatorio antes de caducar (horas)",
+  "admin.settings.reservation_reminder_hours_before_expiry.hint": "De 0 a 720 horas. Si supera el tiempo restante, el recordatorio es inmediato; 0 prioriza la caducidad.",
+  "admin.settings.offer_nudge_days": "Días antes de recordar una oferta",
+  "admin.settings.offer_nudge_days.hint": "De 1 a 365 días; se aplica en la próxima revisión diaria.",
+  "admin.settings.offer_stale_days_after_nudge": "Días antes de marcar una oferta como antigua",
+  "admin.settings.offer_stale_days_after_nudge.hint": "De 1 a 365 días tras el recordatorio; revisión diaria.",
+  "admin.settings.thread_readonly_days_after_close": "Días de chat después del cierre",
+  "admin.settings.thread_readonly_days_after_close.hint": "De 0 a 365 días. Con 0, el chat cerrado es de solo lectura.",
+  "admin.settings.notify_new_offer": "Notifica las ofertas nuevas",
+  "launch.onboarding": "Ya podéis usar AgroBot 2.0: {url}. Abrid el bot y pulsad Iniciar; un administrador aprobará el acceso. En el tablón podéis reservar excedentes, publicar los vuestros y acordar la entrega en el chat de cada reserva. Los precios vienen de la hoja del grupo. Si hay algún problema, avisad a los administradores con la referencia del error."
 }

@@ -7,16 +7,10 @@ import {
 } from '../enums.js';
 import { languageSchema } from './common.js';
 import { unreadCountsSchema } from './threads.js';
+import { settingsSchema } from './settings.js';
 
 /** PRD §10: the group settings, as the Mini App and the jobs read them. */
-export const settingsSchema = z.object({
-  reservation_expiry_hours: z.number(),
-  reservation_reminder_hours_before_expiry: z.number(),
-  offer_nudge_days: z.number(),
-  offer_stale_days_after_nudge: z.number(),
-  thread_readonly_days_after_close: z.number(),
-  notify_new_offer: z.boolean(),
-});
+export { settingsSchema } from './settings.js';
 
 /**
  * `GET /api/me` (ARCH §11): the identity the gate and the shell need, the member's language,

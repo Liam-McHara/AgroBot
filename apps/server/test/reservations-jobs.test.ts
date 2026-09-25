@@ -192,4 +192,14 @@ suite('reservation deadline jobs with a fake clock (PRD US-4.5, ARCH §9)', () =
     expect((await row(second.reservation.id)).remindedAt).toBeNull();
     expect(outcome.nextDueAt?.getTime()).toBe(T0.getTime() + 48 * HOUR);
   });
+
+  it('never reminds a reservation that has already reached its deadline', async () => {
+    await setSetting('reservation_expiry_hours', 1 / 60);
+    await setSetting('reservation_reminder_hours_before_expiry', 0);
+    await deps.reservations.create(jordi, { offerId, quantity: 1 });
+    clock.now = new Date(T0.getTime() + MINUTE);
+    expect((await runRemind()).result).toEqual({ reminded: 0 });
+    expect(await kind('N7')).toHaveLength(0);
+    expect((await runExpire()).result).toEqual({ expired: 1 });
+  });
 });

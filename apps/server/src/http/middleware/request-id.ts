@@ -6,8 +6,7 @@ import type { AppContext } from '../context.js';
  * `INTERNAL` error message, so a member can quote it when something breaks (ARCH §11).
  */
 export const requestId = createMiddleware<AppContext>(async (c, next) => {
-  const incoming = c.req.header('x-request-id');
-  const id = incoming && incoming.length <= 200 ? incoming : crypto.randomUUID();
+  const id = crypto.randomUUID();
   c.set('requestId', id);
   c.header('X-Request-Id', id);
   await next();

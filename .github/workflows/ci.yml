@@ -65,12 +65,14 @@ jobs:
       - name: End-to-end (Playwright against wrangler dev, ARCH §15)
         run: pnpm e2e
 
-      - name: Keep the Playwright report when it fails
-        if: failure()
+      - name: Keep the Playwright report and failure traces
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
 
   # ARCH §15, ADR-0016: migrations against Neon, then the Worker and its secrets, then the

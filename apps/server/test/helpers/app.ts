@@ -41,6 +41,9 @@ export function createFakeHub(jobDeps: () => JobDeps): FakeHub {
     published: [],
     sent: [],
     viewing: new Set(),
+    async hit() {
+      return { allowed: true, remaining: 59, retryAfterMs: 0 };
+    },
     wake() {
       hub.wakes += 1;
     },

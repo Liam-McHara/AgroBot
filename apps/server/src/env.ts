@@ -60,7 +60,10 @@ const baseSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /** Set by the deploy workflow (`--var GIT_COMMIT:<sha>`) for `/status` and `/health`. */
   GIT_COMMIT: z.string().min(1).default('dev'),
-  SENTRY_DSN: z.string().optional(),
+  SENTRY_DSN: z
+    .string()
+    .refine((value) => value === '' || validSentryDsn(value), 'must be an HTTPS Sentry DSN')
+    .optional(),
 
   /** Dev only, ignored in production (ARCH §4, ADR-0010). */
   DEV_AUTH_BYPASS_TELEGRAM_ID: z.string().regex(/^\d+$/).optional(),
@@ -113,6 +116,23 @@ const envSchema = baseSchema.superRefine((env, ctx) => {
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Validate before SDK initialization too, so an invalid DSN is never printed by the SDK. */
+export function validSentryDsn(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      /^[a-zA-Z0-9]+$/.test(url.username) &&
+      !url.password &&
+      /\/\d+$/.test(url.pathname) &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
 
 export class EnvError extends Error {
   constructor(readonly problems: string[]) {

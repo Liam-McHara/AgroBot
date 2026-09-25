@@ -4,6 +4,7 @@ import type { Bot } from 'grammy';
 import { DEFAULT_LANGUAGE } from '@agrobot/shared';
 import { WEBHOOK_PATH } from '../bot/index.js';
 import { requestId } from './middleware/request-id.js';
+import { API_BODY_BYTES, WEBHOOK_BODY_BYTES, boundedBody } from './middleware/limits.js';
 import { requestLogging } from './middleware/logging.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { healthRoutes } from './routes/health.js';
@@ -14,6 +15,7 @@ import { offerRoutes } from './routes/offers.js';
 import { reservationRoutes } from './routes/reservations.js';
 import { threadRoutes } from './routes/threads.js';
 import { adminMemberRoutes } from './routes/admin-members.js';
+import { adminSettingsRoutes } from './routes/admin-settings.js';
 import type { AppContext, AppDeps } from './context.js';
 
 export interface AppOptions {
@@ -42,9 +44,12 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
   app.use('*', requestId);
   app.use('*', async (c, next) => {
     c.set('language', deps.env.DEFAULT_LOCALE ?? DEFAULT_LANGUAGE);
+    c.set('reportError', deps.reportError);
     await next();
   });
   app.use('*', requestLogging(deps.logger));
+  app.use('/api/*', boundedBody(API_BODY_BYTES));
+  app.use('/telegram/*', boundedBody(WEBHOOK_BODY_BYTES));
 
   app.route('/', healthRoutes(deps));
 
@@ -61,6 +66,7 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
 
   app.route('/api', meRoutes(deps));
   app.route('/api', adminMemberRoutes(deps));
+  app.route('/api', adminSettingsRoutes(deps));
   app.route('/api', catalogRoutes(deps));
   app.route('/api', offerRoutes(deps));
   app.route('/api', reservationRoutes(deps));

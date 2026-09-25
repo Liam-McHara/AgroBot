@@ -41,6 +41,9 @@ export function createHubClient(
   };
 
   return {
+    hit(key, limit, windowMs) {
+      return stub.hit(key, limit, windowMs);
+    },
     wake() {
       background('wake', stub.wake());
     },
