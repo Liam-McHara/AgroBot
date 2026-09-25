@@ -1,5 +1,6 @@
 import type { HubPort } from '../domain/ports.js';
 import type { JobName, JobParams, JobResults } from '../jobs/types.js';
+import type { RateLimitDecision } from './hub.js';
 
 /**
  * Everything the Worker asks of the hub (ADR-0017): the domain-facing half in `HubPort`, plus
@@ -7,6 +8,7 @@ import type { JobName, JobParams, JobResults } from '../jobs/types.js';
  * Object stub; the integration tests implement it in-process, so the routes never know which.
  */
 export interface Hub extends HubPort {
+  hit(key: string, limit: number, windowMs: number): Promise<RateLimitDecision>;
   /**
    * ARCH §9: run one job now, inside the hub (30 s of CPU, not a request's 10 ms), and hand
    * back its result. `/sync` and `POST /admin/catalog/sync` await this.

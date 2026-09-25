@@ -57,14 +57,25 @@ const REDACTED_KEYS = new Set([
 
 const MAX_DEPTH = 6;
 
+/** Network errors can embed credentialed URLs even when their object keys are innocuous. */
+function redactText(value: string): string {
+  return value
+    .replace(/\d{5,}:[A-Za-z0-9_-]{20,}\b/g, '[redacted-token]')
+    .replace(/(postgres(?:ql)?:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi, '$1[redacted]@')
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@');
+}
+
 function serializeError(error: Error, depth: number): Record<string, unknown> {
   const result: Record<string, unknown> = {
     name: error.name,
-    message: error.message,
-    ...(error.stack ? { stack: error.stack } : {}),
+    message: redactText(error.message),
+    ...(error.stack ? { stack: redactText(error.stack) } : {}),
   };
   for (const [key, value] of Object.entries(error)) {
-    if (!(key in result)) result[key] = sanitize(value, depth + 1);
+    if (!(key in result))
+      result[key] = REDACTED_KEYS.has(key.toLowerCase())
+        ? '[redacted]'
+        : sanitize(value, depth + 1);
   }
   if (error.cause !== undefined) result['cause'] = sanitize(error.cause, depth + 1);
   return result;
@@ -74,6 +85,7 @@ function serializeError(error: Error, depth: number): Record<string, unknown> {
 function sanitize(value: unknown, depth = 0): unknown {
   if (depth > MAX_DEPTH) return '[depth]';
   if (value instanceof Error) return serializeError(value, depth);
+  if (typeof value === 'string') return redactText(value);
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'bigint') return value.toString();
   if (typeof value === 'function' || typeof value === 'symbol') return undefined;

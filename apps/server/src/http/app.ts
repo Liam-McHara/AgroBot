@@ -4,6 +4,7 @@ import type { Bot } from 'grammy';
 import { DEFAULT_LANGUAGE } from '@agrobot/shared';
 import { WEBHOOK_PATH } from '../bot/index.js';
 import { requestId } from './middleware/request-id.js';
+import { API_BODY_BYTES, WEBHOOK_BODY_BYTES, boundedBody } from './middleware/limits.js';
 import { requestLogging } from './middleware/logging.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { healthRoutes } from './routes/health.js';
@@ -43,9 +44,12 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
   app.use('*', requestId);
   app.use('*', async (c, next) => {
     c.set('language', deps.env.DEFAULT_LOCALE ?? DEFAULT_LANGUAGE);
+    c.set('reportError', deps.reportError);
     await next();
   });
   app.use('*', requestLogging(deps.logger));
+  app.use('/api/*', boundedBody(API_BODY_BYTES));
+  app.use('/telegram/*', boundedBody(WEBHOOK_BODY_BYTES));
 
   app.route('/', healthRoutes(deps));
 

@@ -7,6 +7,7 @@ import {
   type ReadThreadResponse,
 } from '@agrobot/shared';
 import { authenticate, requireMember } from '../middleware/auth.js';
+import { enforceRateLimit } from '../middleware/limits.js';
 import { toMessage, toUnreadCounts } from '../serializers.js';
 import { parseBody, parseQuery, parseUuidParam } from '../validate.js';
 import type { AppContext, AppDeps } from '../context.js';
@@ -39,7 +40,9 @@ export function threadRoutes(deps: AppDeps): Hono<AppContext> {
   app.post('/reservations/:id/messages', async (c) => {
     const member = c.get('member')!;
     const input = await parseBody(c, postMessageSchema);
-    const record = await deps.threads.post(member, parseUuidParam(c, 'id'), input);
+    const id = parseUuidParam(c, 'id');
+    await enforceRateLimit(c, deps.hub, `thread:${id}:${member.id}`, 20);
+    const record = await deps.threads.post(member, id, input);
     const body: MessageResponse = { message: toMessage(record, member) };
     return c.json(body, 201);
   });

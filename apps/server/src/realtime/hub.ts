@@ -13,6 +13,7 @@ import { isAppError } from '../errors.js';
 import { DEADLINE_JOBS, JOB_NAMES, jobs } from '../jobs/index.js';
 import type { JobName, JobOutcome, JobParams, JobResults } from '../jobs/types.js';
 import { LOG_LEVELS, createLogger, type LogLevel, type Logger } from '../logger.js';
+import { reportError } from '../observability.js';
 
 /**
  * `AgroBotHub`: the one Durable Object (ADR-0017), and the only long-lived thing in AgroBot.
@@ -243,6 +244,7 @@ export class AgroBotHub extends DurableObject<Bindings> {
         const delay = JOB_RETRY_DELAYS_MS[Math.min(row.failures, JOB_RETRY_DELAYS_MS.length - 1)]!;
         this.setDue(row.job, this.clock() + delay, row.failures + 1);
         this.logger.error({ job: row.job, err: error, retryInMs: delay }, 'job failed');
+        reportError(error, { operation: row.job });
       }
     }
     await this.arm();
@@ -383,7 +385,10 @@ export class AgroBotHub extends DurableObject<Bindings> {
 
   /** ARCH §7 presence: `{viewing: reservationId | null}` is stored on the socket. */
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    if (typeof message !== 'string') return;
+    if (typeof message !== 'string' || message.length > 256) {
+      ws.close(1009, 'frame too large');
+      return;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(message);

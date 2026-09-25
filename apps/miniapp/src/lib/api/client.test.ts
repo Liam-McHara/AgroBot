@@ -74,4 +74,17 @@ describe('apiFetch', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 502 }));
     await expect(apiFetch('/me')).rejects.toBeInstanceOf(ApiError);
   });
+  it('handles an HTML proxy error and retains a structured request id for the toast', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('<html>bad gateway</html>', {
+        status: 502,
+        headers: { 'x-request-id': 'reference-123' },
+      }),
+    );
+    await expect(apiFetch('/me')).rejects.toMatchObject({
+      code: 'INTERNAL',
+      requestId: 'reference-123',
+      message: expect.stringContaining('reference-123'),
+    });
+  });
 });

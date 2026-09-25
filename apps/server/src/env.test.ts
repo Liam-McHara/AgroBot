@@ -108,6 +108,15 @@ describe('parseEnv', () => {
     const problems = problemsOf({ ...MINIMAL, BOT_TOKEN: '', PUBLIC_URL: 'not a url' });
     expect(problems.join('\n')).not.toContain('not a url');
   });
+  it('validates an optional Sentry DSN without exposing an invalid value', () => {
+    expect(parseEnv({ ...MINIMAL, SENTRY_DSN: '' }).SENTRY_DSN).toBe('');
+    expect(parseEnv({ ...MINIMAL, SENTRY_DSN: 'https://key@example.test/1' }).SENTRY_DSN).toBe(
+      'https://key@example.test/1',
+    );
+    expect(problemsOf({ ...MINIMAL, SENTRY_DSN: 'secret-invalid-value' })).toEqual([
+      'SENTRY_DSN: must be an HTTPS Sentry DSN',
+    ]);
+  });
 });
 
 describe('devAuthBypassId', () => {

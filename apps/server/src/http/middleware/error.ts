@@ -25,17 +25,28 @@ export function errorHandler(error: unknown, c: Context<AppContext>): Response {
   const requestId = c.get('requestId') ?? '';
 
   if (error instanceof AppError) {
-    if (error.status >= 500) c.get('logger')?.error({ err: error, code: error.code }, 'app error');
+    if (error.status >= 500) {
+      c.get('logger')?.error({ err: error, code: error.code }, 'app error');
+      c.get('reportError')?.(error, { requestId, operation: 'http' });
+    }
     return c.json(error.body(language, { requestId }), error.status as 400);
   }
 
   if (error instanceof HTTPException) {
     const code = STATUS_TO_CODE[error.status] ?? 'INTERNAL';
     const appError = new AppError(code);
-    return c.json(appError.body(language, { requestId }), ERROR_STATUS[code] as 400);
+    if (code === 'INTERNAL') {
+      c.get('logger')?.error({ err: error }, 'http error');
+      c.get('reportError')?.(error, { requestId, operation: 'http' });
+    }
+    return c.json(
+      appError.body(language, { requestId }),
+      (error.status === 413 ? 413 : ERROR_STATUS[code]) as 400,
+    );
   }
 
   c.get('logger')?.error({ err: error }, 'unhandled error');
+  c.get('reportError')?.(error, { requestId, operation: 'http' });
   const internal = new AppError('INTERNAL');
   return c.json(internal.body(language, { requestId }), 500);
 }

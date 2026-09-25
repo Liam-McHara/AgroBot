@@ -398,6 +398,20 @@ describe('tickets and sockets (ARCH §7)', () => {
 });
 
 describe('rate counters (ARCH §17)', () => {
+  it('admits exactly the limit under concurrent calls and keeps thread parties independent', async () => {
+    const stub = await hubWith({ now: T0 }, fakeRunner({}).runner);
+    const decisions = await Promise.all(
+      Array.from({ length: 61 }, () => stub.hit(`member:${MEMBER}`, 60, MINUTE)),
+    );
+    expect(decisions.filter((decision) => decision.allowed)).toHaveLength(60);
+    const messages = await Promise.all(
+      Array.from({ length: 21 }, () => stub.hit(`thread:${RESERVATION}:${MEMBER}`, 20, MINUTE)),
+    );
+    expect(messages.filter((decision) => decision.allowed)).toHaveLength(20);
+    expect(await stub.hit(`thread:${RESERVATION}:other-member`, 20, MINUTE)).toMatchObject({
+      allowed: true,
+    });
+  });
   it('counts hits in a fixed window and resets after it', async () => {
     const clock = { now: T0 };
     const stub = await hubWith(clock, fakeRunner({}).runner);
