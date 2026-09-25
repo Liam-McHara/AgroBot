@@ -320,5 +320,18 @@
     "other": "{count, number} missatges sense llegir"
   },
   "notification.N9.text": "💬 {sender} t'ha escrit sobre la reserva de {quantity, number, 1} {unit} de {product}:\n«{preview}»",
-  "notification.N9.open": "Obre la conversa"
+  "notification.N9.open": "Obre la conversa",
+  "admin.settings.title": "Configuració del grup",
+  "admin.settings.hint": "Els canvis s’apliquen sense reiniciar. Els venciments ja assignats es conserven.",
+  "admin.settings.reservation_expiry_hours": "Caducitat de les reserves (hores)",
+  "admin.settings.reservation_expiry_hours.hint": "Entre 1 minut (0,016667 h) i 720 hores. Només per a reserves noves.",
+  "admin.settings.reservation_reminder_hours_before_expiry": "Recordatori abans de caducar (hores)",
+  "admin.settings.reservation_reminder_hours_before_expiry.hint": "De 0 a 720 hores. Si supera el temps restant, el recordatori és immediat; 0 prioritza la caducitat.",
+  "admin.settings.offer_nudge_days": "Dies abans de recordar una oferta",
+  "admin.settings.offer_nudge_days.hint": "D’1 a 365 dies; s’aplica a la propera revisió diària.",
+  "admin.settings.offer_stale_days_after_nudge": "Dies abans de marcar una oferta com a antiga",
+  "admin.settings.offer_stale_days_after_nudge.hint": "D’1 a 365 dies després del recordatori; revisió diària.",
+  "admin.settings.thread_readonly_days_after_close": "Dies de xat després del tancament",
+  "admin.settings.thread_readonly_days_after_close.hint": "De 0 a 365 dies. Amb 0, el xat tancat és de només lectura.",
+  "admin.settings.notify_new_offer": "Notifica les ofertes noves"
 }

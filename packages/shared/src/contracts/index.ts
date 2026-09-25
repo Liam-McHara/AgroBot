@@ -6,3 +6,4 @@ export * from './offers.js';
 export * from './events.js';
 export * from './reservations.js';
 export * from './threads.js';
+export * from './settings.js';

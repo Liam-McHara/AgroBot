@@ -130,6 +130,12 @@ checks: `pnpm --filter @agrobot/server exec vitest run test/threads.test.ts
 test/threads-api.test.ts`; the e2e flow is `e2e/tests/thread.spec.ts`, which runs last and
 builds on the offer the reservations spec leaves.
 
+Admin settings: `domain/settings` validates the shared PRD US-7.1 schema, re-checks the admin
+inside the transaction, audits each changed key and wakes the hub after saving. Existing
+reservation expiry timestamps stay fixed. Focused checks:
+`pnpm --filter @agrobot/server exec vitest run test/settings.test.ts` and
+`pnpm --filter @agrobot/miniapp exec vitest run src/routes/admin/Settings.test.ts`.
+
 ## Git
 
 - Branch per milestone or task (`m0-foundation`, `m3-board-search`).

@@ -5,11 +5,13 @@
 <nav aria-label={t('nav.admin')}>
   <a href="#/admin/members">{t('admin.members.title')}</a>
   <a href="#/admin/catalog">{t('catalog.title')}</a>
+  <a href="#/admin/settings">{t('admin.settings.title')}</a>
 </nav>
 
 <style>
   nav {
     display: flex;
+    flex-wrap: wrap;
     gap: 16px;
   }
   a {

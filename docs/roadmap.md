@@ -417,7 +417,7 @@ did, so Telegram's `MainButton` is not used (ARCH §12).
 (hosting).
 
 **Tasks**
-- [ ] Admin → Settings screen with validation per key; settings read by jobs and domain at run
+- [x] Admin → Settings screen with validation per key; settings read by jobs and domain at run
       time (no restart).
 - [ ] Rate limiting (per member, per thread), body limits, HTML escaping audit, `pnpm audit`
       report in CI, dependency review.

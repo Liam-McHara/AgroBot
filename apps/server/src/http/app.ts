@@ -14,6 +14,7 @@ import { offerRoutes } from './routes/offers.js';
 import { reservationRoutes } from './routes/reservations.js';
 import { threadRoutes } from './routes/threads.js';
 import { adminMemberRoutes } from './routes/admin-members.js';
+import { adminSettingsRoutes } from './routes/admin-settings.js';
 import type { AppContext, AppDeps } from './context.js';
 
 export interface AppOptions {
@@ -61,6 +62,7 @@ export function createApp(deps: AppDeps, options: AppOptions = {}): Hono<AppCont
 
   app.route('/api', meRoutes(deps));
   app.route('/api', adminMemberRoutes(deps));
+  app.route('/api', adminSettingsRoutes(deps));
   app.route('/api', catalogRoutes(deps));
   app.route('/api', offerRoutes(deps));
   app.route('/api', reservationRoutes(deps));
