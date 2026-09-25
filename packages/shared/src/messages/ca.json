@@ -333,5 +333,6 @@
   "admin.settings.offer_stale_days_after_nudge.hint": "D’1 a 365 dies després del recordatori; revisió diària.",
   "admin.settings.thread_readonly_days_after_close": "Dies de xat després del tancament",
   "admin.settings.thread_readonly_days_after_close.hint": "De 0 a 365 dies. Amb 0, el xat tancat és de només lectura.",
-  "admin.settings.notify_new_offer": "Notifica les ofertes noves"
+  "admin.settings.notify_new_offer": "Notifica les ofertes noves",
+  "launch.onboarding": "Ja podeu fer servir AgroBot 2.0: {url}. Obriu el bot i premeu Inicia; un administrador aprovarà l’accés. Al tauler podeu reservar excedents, publicar els vostres i acordar el lliurament al xat de cada reserva. Els preus venen del full del grup. Si hi ha cap problema, aviseu els administradors amb la referència de l’error."
 }

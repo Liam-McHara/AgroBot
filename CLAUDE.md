@@ -127,7 +127,7 @@ recipient reads or replies, and none at all while `hub.isViewing` says they have
 (the `{viewing}` socket message). Admins are not parties and cannot read a thread. The Mini App
 refetches the thread whole on `message.new` and marks it read, which moves the badges. Focused
 checks: `pnpm --filter @agrobot/server exec vitest run test/threads.test.ts
-test/threads-api.test.ts`; the e2e flow is `e2e/tests/thread.spec.ts`, which runs last and
+test/threads-api.test.ts`; the e2e flow is `e2e/tests/thread.spec.ts`, which runs after reservations and
 builds on the offer the reservations spec leaves.
 
 Admin settings: `domain/settings` validates the shared PRD US-7.1 schema, re-checks the admin
@@ -135,6 +135,16 @@ inside the transaction, audits each changed key and wakes the hub after saving. 
 reservation expiry timestamps stay fixed. Focused checks:
 `pnpm --filter @agrobot/server exec vitest run test/settings.test.ts` and
 `pnpm --filter @agrobot/miniapp exec vitest run src/routes/admin/Settings.test.ts`.
+
+Hardening: mutating API requests use the hub's fixed-window counters (60/member/minute,
+20 chat messages/member/thread/minute); bodies are bounded before auth and parsing. Optional
+Sentry runs at Worker/hub boundaries and removes private event data. Focused checks:
+`pnpm --filter @agrobot/server exec vitest run src/http/hardening.test.ts
+src/observability.test.ts src/logger.test.ts src/env.test.ts` and `pnpm --filter @agrobot/server
+test:hub`. `pnpm audit` reports advisories; see `docs/dependency-review.md` for dispositions.
+`pnpm e2e` runs all flows plus admin settings with zero retries; see `docs/testing.md`.
+Launch procedures and required real-world evidence are in `docs/runbook.md` and
+`docs/launch-checklist.md`. Do not mark M6 complete from local checks alone.
 
 ## Git
 

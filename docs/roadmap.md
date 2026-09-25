@@ -419,10 +419,12 @@ did, so Telegram's `MainButton` is not used (ARCH §12).
 **Tasks**
 - [x] Admin → Settings screen with validation per key; settings read by jobs and domain at run
       time (no restart).
-- [ ] Rate limiting (per member, per thread), body limits, HTML escaping audit, `pnpm audit`
+- [x] Rate limiting (per member, per thread), body limits, HTML escaping audit, `pnpm audit`
       report in CI, dependency review.
-- [ ] Sentry hook (optional by env), `/status` complete, structured error ids surfaced in toasts.
-- [ ] Full Playwright suite in CI (M1–M5 scenarios), flaky-test policy documented.
+- [x] Sentry hook (optional by env), `/status` complete, structured error ids surfaced in toasts.
+- [x] Runbook and launch evidence checklist prepared: `docs/runbook.md`,
+      `docs/launch-checklist.md`; operational execution remains below.
+- [x] Full Playwright suite in CI (M1–M5 scenarios plus settings), flaky-test policy documented.
 - [ ] Production deploy (ADR-0016): the `agrobot` Worker with its secrets, the Neon
       `production` branch and its Hyperdrive configuration, custom domain if any (`PUBLIC_URL`
       follows), Mini App short name on the 1.0 bot pointing at `PUBLIC_URL`; restore drill
@@ -433,7 +435,8 @@ did, so Telegram's `MainButton` is not used (ARCH §12).
       duration, Hyperdrive queries, Neon CU-hours).
 - [ ] Bot cutover (ADR-0013): stop 1.0, then `pnpm bot:set-webhook` with the 1.0 token against
       the production Worker — the two can never run at once. Rollback is re-pointing the
-      webhook at 1.0; rehearse it.
+      consumer to 1.0: delete the webhook without dropping updates, then restore its polling
+      process (ADR-0019 corrects ADR-0013's webhook rollback detail); rehearse it.
 - [ ] Pilot with the group: onboarding message, `Productes` tab prepared and shared with the
       service account (PRD §6), admins bootstrapped, one week of feedback triage into GitHub
       issues.
@@ -446,6 +449,12 @@ did, so Telegram's `MainButton` is not used (ARCH §12).
 - After the pilot week every free-plan figure in ARCH §15's budget table is under a quarter of
   its cap, and Neon's monthly compute is on track for well under 100 CU-hours.
 - No open P1 issues after the pilot week.
+
+**Engineering verification (2026-09-25).** Lint, typecheck, build, all 493 unit/integration/hub
+tests (Postgres 16, CI mode) and all 10 Playwright scenarios passed locally. Operational
+acceptance remains open: the latest M5 production deploy failed for missing `DATABASE_URL`,
+and deployment, real group/catalogue verification, drills and pilot evidence must be recorded
+in `docs/launch-checklist.md` before this milestone is complete.
 
 ---
 

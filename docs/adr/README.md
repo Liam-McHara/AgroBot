@@ -23,6 +23,7 @@ edited after acceptance except to change the status (e.g. *Superseded by ADR-00x
 | [0016](0016-hosting-on-cloudflare-workers-and-neon.md) | Host on Cloudflare Workers with Neon Postgres, on their free plans | Accepted |
 | [0017](0017-durable-object-for-jobs-and-realtime.md) | One Durable Object for jobs and realtime; WebSocket replaces SSE | Accepted |
 | [0018](0018-archive-rejected-proposals-with-offers.md) | Archive rejected proposals that offers reference, delete the rest | Accepted |
+| [0019](0019-legacy-rollback-restores-polling.md) | Restore the preserved 1.0 polling consumer on rollback | Accepted; supersedes ADR-0013's webhook rollback detail |
 
 ## Template
 

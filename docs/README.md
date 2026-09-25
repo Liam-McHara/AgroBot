@@ -14,6 +14,8 @@ when code and documents disagree, one of them is a bug and the fix lands in the 
 4. [adr/](adr/README.md) — why each big decision was taken and what was rejected.
 5. [roadmap.md](roadmap.md) — the plan: milestones M0–M6 (with M2.5, the move to free hosting)
    with tasks and definitions of done.
+6. For M6 operations: [runbook.md](runbook.md), [launch-checklist.md](launch-checklist.md),
+   [testing.md](testing.md) and [dependency-review.md](dependency-review.md).
 
 ## The spec-driven workflow
 

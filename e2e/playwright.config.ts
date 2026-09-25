@@ -27,7 +27,9 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   workers: 1,
-  retries: process.env['CI'] ? 1 : 0,
+  // These scenarios share state. A retry after a partial mutation is not a clean run.
+  retries: 0,
+  failOnFlakyTests: Boolean(process.env['CI']),
   forbidOnly: Boolean(process.env['CI']),
   reporter: process.env['CI'] ? [['github'], ['html', { open: 'never' }]] : [['list']],
   timeout: 30_000,
