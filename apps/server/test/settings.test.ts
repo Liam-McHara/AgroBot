@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_SETTINGS } from '@agrobot/shared';
-import { members, settings, products } from '../src/db/schema/index.js';
+import { members, settings, products, notifications } from '../src/db/schema/index.js';
 import { createSettingsService, loadSettings } from '../src/domain/settings/service.js';
 import { createApp } from '../src/http/app.js';
 import { openTestDatabase, resetDatabase } from './helpers/database.js';
@@ -78,6 +78,9 @@ suite('settings domain and API (PRD US-7.1)', () => {
     const service = createSettingsService(deps);
     await service.update(producer, { notify_new_offer: false });
     const offer = await deps.offers.publish(producer, { productId: product!.id, quantity: 10 });
+    expect(
+      await database!.db.select().from(notifications).where(eq(notifications.kind, 'N3')),
+    ).toHaveLength(0);
     const before = await deps.reservations.create(requester, {
       offerId: offer.offer.id,
       quantity: 1,

@@ -35,10 +35,10 @@ export async function nextReminderDueAt(
   db: Executor,
   reminderHoursBeforeExpiry: number,
 ): Promise<Date | null> {
-  const minutes = Math.round(reminderHoursBeforeExpiry * 60);
+  const seconds = reminderHoursBeforeExpiry * 3600;
   const [row] = await db
     .select({
-      due: sql<string | null>`min(${reservations.expiresAt} - make_interval(mins => ${minutes}))`,
+      due: sql<string | null>`min(${reservations.expiresAt} - make_interval(secs => ${seconds}))`,
     })
     .from(reservations)
     .where(

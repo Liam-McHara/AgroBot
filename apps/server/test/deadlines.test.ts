@@ -93,5 +93,8 @@ suite('deadline lookups for the hub (ARCH §9)', () => {
     expect((await nextReminderDueAt(database!.db, 1.5))?.toISOString()).toBe(
       '2026-07-02T10:30:00.000Z',
     );
+    expect((await nextReminderDueAt(database!.db, 1 / 120))?.toISOString()).toBe(
+      '2026-07-02T11:59:30.000Z',
+    );
   });
 });
